@@ -5,14 +5,16 @@ import java.nio.file.*;
 import java.util.*;
 
 public class FtpManager {
-    private static final String VSFTPD_CONF = "/etc/vsftpd.conf";
-    private static final String FTP_USERS_FILE = "/etc/vsftpd.userlist";
+    private String vsftpdConfPath; // Percorso del file di configurazione
+    private String ftpUsersFilePath; // Percorso del file lista utenti FTP
 
     private ArrayList<String[]> config;
     private ArrayList<FtpCondBean> ftpShares;
     private ArrayList<String> ftpUsers;
 
-    public FtpManager() throws IOException {
+    public FtpManager(String vsftpdConfPath, String ftpUsersFilePath) throws IOException {
+        this.vsftpdConfPath = vsftpdConfPath;
+        this.ftpUsersFilePath = ftpUsersFilePath;
         this.config = new ArrayList<>();
         this.ftpShares = new ArrayList<>();
         this.ftpUsers = new ArrayList<>();
@@ -24,7 +26,11 @@ public class FtpManager {
     // Carica il file di configurazione di vsftpd
     private void loadConfig() throws IOException {
         config.clear();
-        List<String> lines = Files.readAllLines(Paths.get(VSFTPD_CONF));
+        Path configPath = Paths.get(vsftpdConfPath);
+        if (!Files.exists(configPath)) {
+            throw new FileNotFoundException("File di configurazione non trovato: " + vsftpdConfPath);
+        }
+        List<String> lines = Files.readAllLines(configPath);
         for (String line : lines) {
             line = line.trim();
             if (!line.isEmpty() && !line.startsWith("#")) {
@@ -54,11 +60,11 @@ public class FtpManager {
 
     // Aggiorna il file di configurazione salvando un backup
     public void updateConfig() throws IOException {
-        Path configPath = Paths.get(VSFTPD_CONF);
-        Path backupPath = Paths.get(VSFTPD_CONF + ".bak");
+        Path configPath = Paths.get(vsftpdConfPath);
+        Path backupPath = Paths.get(vsftpdConfPath + ".bak");
         Files.copy(configPath, backupPath, StandardCopyOption.REPLACE_EXISTING);
 
-        try (BufferedWriter writer = new BufferedWriter(new FileWriter(VSFTPD_CONF))) {
+        try (BufferedWriter writer = new BufferedWriter(new FileWriter(configPath.toFile()))) {
             for (String[] pair : config) {
                 writer.write(pair[0] + "=" + pair[1]);
                 writer.newLine();
@@ -69,29 +75,32 @@ public class FtpManager {
     // Carica la lista utenti FTP
     private void loadFtpUsers() throws IOException {
         ftpUsers.clear();
-        Path path = Paths.get(FTP_USERS_FILE);
+        Path path = Paths.get(ftpUsersFilePath);
         if (Files.exists(path)) {
             ftpUsers.addAll(Files.readAllLines(path));
         }
     }
 
-    // Ritorna gli utenti FTP come array
-    public String[] getFtpUsers() {
-        return ftpUsers.toArray(new String[0]);
+    // Ritorna la lista degli utenti FTP come ArrayList
+    public ArrayList<String> getFtpUsers() {
+        return new ArrayList<>(ftpUsers);
     }
 
     // Aggiunge un nuovo utente alla lista FTP
     public void addFtpUser(String username) throws IOException {
         if (!ftpUsers.contains(username)) {
             ftpUsers.add(username);
-            Files.write(Paths.get(FTP_USERS_FILE), ftpUsers);
+            Files.write(Paths.get(ftpUsersFilePath), ftpUsers);
         }
     }
 
     // Rimuove un utente dalla lista FTP e dai bind mount
     public void removeFtpUser(String username) throws IOException {
-        ftpUsers.remove(username);
-        Files.write(Paths.get(FTP_USERS_FILE), ftpUsers);
+        Path path = Paths.get(ftpUsersFilePath);
+        if (Files.exists(path)) {
+            ftpUsers.remove(username);
+            Files.write(path, ftpUsers);
+        }
 
         // Rimuovi tutte le condivisioni legate all'utente
         ftpShares.removeIf(share -> share.getUsername().equalsIgnoreCase(username));
@@ -111,8 +120,8 @@ public class FtpManager {
         return new ArrayList<>(ftpShares);
     }
 
-    // Ritorna le condivisioni di un utente
-    public List<FtpCondBean> getSharesByUser(String username) {
+    // Ritorna tutte le condivisioni FTP di un dato utente
+    public ArrayList<FtpCondBean> getSharesByUser(String username) {
         ArrayList<FtpCondBean> userShares = new ArrayList<>();
         for (FtpCondBean share : ftpShares) {
             if (share.getUsername().equalsIgnoreCase(username)) {

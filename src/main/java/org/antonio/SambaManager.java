@@ -244,4 +244,15 @@ public class SambaManager {
     private void removeSetting(ArrayList<String[]> settings, String key) {
         settings.removeIf(pair -> pair[0].equalsIgnoreCase(key));
     }
+
+    // Ritorna tutte le condivisioni di un dato utente
+    public ArrayList<SmbCondBean> getSharesByUser(String username) {
+        ArrayList<SmbCondBean> userShares = new ArrayList<>();
+        for (SmbCondBean share : shares) {
+            if (share.getValidUsers().contains(username)) {
+                userShares.add(share);
+            }
+        }
+        return userShares;
+    }
 }

@@ -1,58 +1,36 @@
 package org.antonio;
-
 import java.io.*;
 import java.nio.file.*;
 import java.util.*;
 
 public class UsersManager {
-    private static final String FTP_USERS_FILE = "/etc/vsftpd.userlist"; // File lista utenti FTP
     private ArrayList<UserBean> users;
+    private SambaManager sambaManager;
+    private FtpManager ftpManager;
 
-    public UsersManager() throws IOException {
+    public UsersManager(SambaManager sambaManager, FtpManager ftpManager) throws IOException {
+        this.sambaManager = sambaManager;
+        this.ftpManager = ftpManager;
         this.users = new ArrayList<>();
         loadUsers();
     }
 
-    // Carica la lista degli utenti dal sistema e verifica Samba/FTP
+    // Carica la lista degli utenti dal sistema e imposta i permessi FTP e Samba
     private void loadUsers() throws IOException {
         users.clear();
 
         // Ottieni lista utenti dal file /etc/passwd
         List<String> passwdLines = Files.readAllLines(Paths.get("/etc/passwd"));
 
-        // Carica gli utenti verificando i permessi per FTP e Samba
         for (String line : passwdLines) {
             String[] parts = line.split(":");
             if (parts.length > 0) {
                 String username = parts[0];
-                boolean sambaEnabled = isSambaEnabled(username);
-                boolean ftpEnabled = isFtpEnabled(username);
+                boolean sambaEnabled = sambaManager.getSambaUsers().contains(username);
+                boolean ftpEnabled = ftpManager.getFtpUsers().contains(username);
                 users.add(new UserBean(username, sambaEnabled, ftpEnabled));
             }
         }
-    }
-
-    // Verifica se un utente è abilitato in Samba
-    private boolean isSambaEnabled(String username) throws IOException {
-        ProcessBuilder pb = new ProcessBuilder("pdbedit", "-L", "-u", username);
-        Process process = pb.start();
-        int exitCode;
-        try {
-            exitCode = process.waitFor();
-        } catch (InterruptedException e) {
-            throw new IOException("Errore durante la verifica Samba per l'utente " + username, e);
-        }
-        return exitCode == 0;
-    }
-
-    // Verifica se un utente è nella lista utenti di FTP
-    private boolean isFtpEnabled(String username) throws IOException {
-        Path path = Paths.get(FTP_USERS_FILE);
-        if (Files.exists(path)) {
-            List<String> ftpUsers = Files.readAllLines(path);
-            return ftpUsers.contains(username);
-        }
-        return false;
     }
 
     // Ritorna un array con i soli nomi degli utenti
@@ -65,8 +43,9 @@ public class UsersManager {
         return new ArrayList<>(users);
     }
 
-    // Aggiunge un nuovo utente al sistema
-    public void addUser(String username, String password) throws IOException {
+    // Aggiunge un nuovo utente al sistema, abilitandolo opzionalmente a FTP e Samba
+    public void addUser(String username, String password, boolean enableFtp, boolean enableSamba) throws IOException {
+        // Aggiunge l'utente al sistema
         ProcessBuilder pb = new ProcessBuilder("sudo", "useradd", "-m", username);
         Process process = pb.start();
         try {
@@ -79,6 +58,15 @@ public class UsersManager {
 
         // Imposta la password
         setPassword(username, password);
+
+        // Abilita Samba e FTP se richiesto
+        if (enableSamba) {
+            sambaManager.addSambaUser(username, password);
+        }
+        if (enableFtp) {
+            ftpManager.addFtpUser(username);
+        }
+
         loadUsers(); // Ricarica la lista utenti
     }
 
@@ -100,8 +88,22 @@ public class UsersManager {
         }
     }
 
-    // Rimuove un utente dal sistema
+    // Rimuove un utente dal sistema e disabilita Samba e FTP
     public void removeUser(String username) throws IOException {
+        // Rimuovi le condivisioni e disabilita gli accessi
+        ArrayList<SmbCondBean> sambaShares = sambaManager.getSharesByUser(username);
+        for (SmbCondBean share : sambaShares) {
+            sambaManager.removeUserFromShare(share.getName(), username);
+        }
+        sambaManager.removeSambaUser(username);
+
+        ArrayList<FtpCondBean> ftpShares = ftpManager.getSharesByUser(username);
+        for (FtpCondBean share : ftpShares) {
+            ftpManager.removeShare(share);
+        }
+        ftpManager.removeFtpUser(username);
+
+        // Elimina l'utente dal sistema
         ProcessBuilder pb = new ProcessBuilder("sudo", "userdel", "-r", username);
         Process process = pb.start();
         try {
@@ -111,64 +113,38 @@ public class UsersManager {
         } catch (InterruptedException e) {
             throw new IOException("Errore durante la rimozione dell'utente " + username, e);
         }
+
         loadUsers(); // Ricarica la lista utenti
     }
 
-    // Abilita l'accesso a Samba
-    public void enableSamba(String username, String password) throws IOException {
-        ProcessBuilder pb = new ProcessBuilder("sudo", "smbpasswd", "-a", username);
-        Process process = pb.start();
-        try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(process.getOutputStream()))) {
-            writer.write(password);
-            writer.newLine();
-            writer.write(password);
-            writer.newLine();
-            writer.flush();
-        }
-        try {
-            if (process.waitFor() != 0) {
-                throw new IOException("Errore durante l'abilitazione Samba per l'utente " + username);
+    // Aggiorna lo stato degli utenti, abilitando/disabilitando Samba e FTP in base ai booleani
+    public void updateUsers(String password) throws IOException {
+        for (UserBean user : users) {
+            String username = user.getUsername();
+            boolean sambaEnabled = sambaManager.getSambaUsers().contains(username);
+            boolean ftpEnabled = ftpManager.getFtpUsers().contains(username);
+
+            // Gestione di Samba
+            if (user.isSambaEnabled() && !sambaEnabled) {
+                // Aggiunge l'utente a Samba se abilitato ma non presente
+                if (password != null && !password.isEmpty()) {
+                    sambaManager.addSambaUser(username, password);
+                } else {
+                    throw new IllegalArgumentException("Password necessaria per abilitare Samba per l'utente " + username);
+                }
+            } else if (!user.isSambaEnabled() && sambaEnabled) {
+                // Rimuove l'utente da Samba se disabilitato ma presente
+                sambaManager.removeSambaUser(username);
             }
-        } catch (InterruptedException e) {
-            throw new IOException("Errore durante l'abilitazione Samba per l'utente " + username, e);
-        }
-        loadUsers(); // Ricarica la lista utenti
-    }
 
-    // Disabilita l'accesso a Samba
-    public void disableSamba(String username) throws IOException {
-        ProcessBuilder pb = new ProcessBuilder("sudo", "smbpasswd", "-x", username);
-        Process process = pb.start();
-        try {
-            if (process.waitFor() != 0) {
-                throw new IOException("Errore durante la disabilitazione Samba per l'utente " + username);
+            // Gestione di FTP
+            if (user.isFtpEnabled() && !ftpEnabled) {
+                // Aggiunge l'utente a FTP se abilitato ma non presente
+                ftpManager.addFtpUser(username);
+            } else if (!user.isFtpEnabled() && ftpEnabled) {
+                // Rimuove l'utente da FTP se disabilitato ma presente
+                ftpManager.removeFtpUser(username);
             }
-        } catch (InterruptedException e) {
-            throw new IOException("Errore durante la disabilitazione Samba per l'utente " + username, e);
         }
-        loadUsers(); // Ricarica la lista utenti
-    }
-
-    // Abilita l'accesso a FTP
-    public void enableFtp(String username) throws IOException {
-        Path path = Paths.get(FTP_USERS_FILE);
-        List<String> ftpUsers = Files.exists(path) ? Files.readAllLines(path) : new ArrayList<>();
-        if (!ftpUsers.contains(username)) {
-            ftpUsers.add(username);
-            Files.write(path, ftpUsers);
-        }
-        loadUsers(); // Ricarica la lista utenti
-    }
-
-    // Disabilita l'accesso a FTP
-    public void disableFtp(String username) throws IOException {
-        Path path = Paths.get(FTP_USERS_FILE);
-        if (Files.exists(path)) {
-            List<String> ftpUsers = Files.readAllLines(path);
-            ftpUsers.remove(username);
-            Files.write(path, ftpUsers);
-        }
-        loadUsers(); // Ricarica la lista utenti
     }
 }
-
