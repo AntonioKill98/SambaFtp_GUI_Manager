@@ -4,21 +4,24 @@ import java.io.*;
 import java.nio.file.*;
 import java.util.*;
 
-public class SambaConfigManager {
+public class SambaManager {
     private String configPath;
     private ArrayList<String[]> globalSettings;
     private ArrayList<String[]> homeSettings;
     private ArrayList<SmbCondBean> shares;
+    private ArrayList<String> sambaUsers; // Lista degli utenti Samba
 
-    public SambaConfigManager(String configPath) throws IOException {
+    public SambaManager(String configPath) throws IOException {
         this.configPath = configPath;
         this.globalSettings = new ArrayList<>();
         this.homeSettings = new ArrayList<>();
         this.shares = new ArrayList<>();
+        this.sambaUsers = new ArrayList<>();
         if (!Files.exists(Paths.get(configPath))) {
             throw new FileNotFoundException("File di configurazione non trovato: " + configPath);
         }
         loadConfig();
+        loadSambaUsers(); // Carica gli utenti Samba
     }
 
     public void loadConfig() throws IOException {
@@ -61,7 +64,14 @@ public class SambaConfigManager {
                                 globalSettings.add(new String[]{key, value});
                             }
                         } else {
-                            currentShare.addProperty(key, value);
+                            if (key.equalsIgnoreCase("valid users")) {
+                                String[] users = value.split(",");
+                                for (String user : users) {
+                                    currentShare.addValidUser(user.trim());
+                                }
+                            } else {
+                                currentShare.addProperty(key, value);
+                            }
                         }
                     }
                 }
@@ -70,6 +80,63 @@ public class SambaConfigManager {
                 shares.add(currentShare);
             }
         }
+    }
+
+    public void loadSambaUsers() throws IOException {
+        sambaUsers.clear();
+        ProcessBuilder pb = new ProcessBuilder("pdbedit", "-L");
+        Process process = pb.start();
+
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                String[] parts = line.split(":");
+                if (parts.length > 0) {
+                    sambaUsers.add(parts[0].trim());
+                }
+            }
+        } catch (IOException e) {
+            throw new IOException("Errore durante il caricamento degli utenti Samba", e);
+        }
+    }
+
+    public ArrayList<String> getSambaUsers() {
+        return new ArrayList<>(sambaUsers);
+    }
+
+    public void addSambaUser(String username, String password) throws IOException {
+        ProcessBuilder pb = new ProcessBuilder("sudo", "smbpasswd", "-a", username);
+        Process process = pb.start();
+
+        try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(process.getOutputStream()))) {
+            writer.write(password);
+            writer.newLine();
+            writer.write(password);
+            writer.newLine();
+            writer.flush();
+        }
+
+        try {
+            if (process.waitFor() != 0) {
+                throw new IOException("Errore durante l'aggiunta dell'utente Samba: " + username);
+            }
+        } catch (InterruptedException e) {
+            throw new IOException("Errore durante l'aggiunta dell'utente Samba: " + username, e);
+        }
+        loadSambaUsers();
+    }
+
+    public void removeSambaUser(String username) throws IOException {
+        ProcessBuilder pb = new ProcessBuilder("sudo", "smbpasswd", "-x", username);
+        Process process = pb.start();
+        try {
+            if (process.waitFor() != 0) {
+                throw new IOException("Errore durante la rimozione dell'utente Samba: " + username);
+            }
+        } catch (InterruptedException e) {
+            throw new IOException("Errore durante la rimozione dell'utente Samba: " + username, e);
+        }
+        loadSambaUsers();
     }
 
     public String getFormattedGlobalSettings() {
@@ -130,6 +197,15 @@ public class SambaConfigManager {
         throw new IllegalArgumentException("Condivisione non trovata: " + shareName);
     }
 
+    public void removeUserFromShare(String shareName, String username) {
+        SmbCondBean share = getShare(shareName);
+        if (share != null) {
+            share.removeValidUser(username);
+        } else {
+            throw new IllegalArgumentException("Condivisione non trovata: " + shareName);
+        }
+    }
+
     public void removeShare(String shareName) {
         shares.removeIf(share -> share.getName().equalsIgnoreCase(shareName));
     }
@@ -169,4 +245,3 @@ public class SambaConfigManager {
         settings.removeIf(pair -> pair[0].equalsIgnoreCase(key));
     }
 }
-

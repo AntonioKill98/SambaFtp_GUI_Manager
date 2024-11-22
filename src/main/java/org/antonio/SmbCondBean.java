@@ -2,13 +2,17 @@ package org.antonio;
 
 import java.util.ArrayList;
 
+import java.util.*;
+
 public class SmbCondBean {
     private String name;
     private ArrayList<String[]> properties;
+    private ArrayList<String> validUsers; // Nuova lista per "valid users"
 
     public SmbCondBean(String name) {
         this.name = name;
         this.properties = new ArrayList<>();
+        this.validUsers = new ArrayList<>();
     }
 
     public String getName() {
@@ -31,10 +35,27 @@ public class SmbCondBean {
         return properties;
     }
 
+    public void addValidUser(String username) {
+        if (!validUsers.contains(username)) {
+            validUsers.add(username);
+        }
+    }
+
+    public void removeValidUser(String username) {
+        validUsers.remove(username);
+    }
+
+    public ArrayList<String> getValidUsers() {
+        return new ArrayList<>(validUsers);
+    }
+
     public String toFormattedString() {
         StringBuilder builder = new StringBuilder("[").append(name).append("]\n");
         for (String[] property : properties) {
             builder.append(property[0]).append(" = ").append(property[1]).append("\n");
+        }
+        if (!validUsers.isEmpty()) {
+            builder.append("valid users = ").append(String.join(", ", validUsers)).append("\n");
         }
         return builder.toString();
     }
