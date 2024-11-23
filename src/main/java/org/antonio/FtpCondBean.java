@@ -34,5 +34,15 @@ public class FtpCondBean {
     public void setPath(String path) {
         this.path = path;
     }
+
+    public String toFormattedString() {
+        StringBuilder builder = new StringBuilder();
+        builder.append("Condivisione FTP\n");
+        builder.append("Username: ").append(username).append("\n");
+        builder.append("Nome Condivisione: ").append(shareName).append("\n");
+        builder.append("Percorso: ").append(path).append("\n");
+        return builder.toString();
+    }
+
 }
 

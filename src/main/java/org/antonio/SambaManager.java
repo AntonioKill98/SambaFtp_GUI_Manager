@@ -85,9 +85,9 @@ public class SambaManager {
     public void loadSambaUsers() throws IOException {
         sambaUsers.clear();
         ProcessBuilder pb = new ProcessBuilder("pdbedit", "-L");
-        Process process = pb.start();
+        String output = executeCommandWithOutput(pb, "Errore durante il caricamento degli utenti Samba");
 
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+        try (BufferedReader reader = new BufferedReader(new StringReader(output))) {
             String line;
             while ((line = reader.readLine()) != null) {
                 String[] parts = line.split(":");
@@ -95,48 +95,42 @@ public class SambaManager {
                     sambaUsers.add(parts[0].trim());
                 }
             }
-        } catch (IOException e) {
-            throw new IOException("Errore durante il caricamento degli utenti Samba", e);
         }
-    }
-
-    public ArrayList<String> getSambaUsers() {
-        return new ArrayList<>(sambaUsers);
     }
 
     public void addSambaUser(String username, String password) throws IOException {
         ProcessBuilder pb = new ProcessBuilder("sudo", "smbpasswd", "-a", username);
-        Process process = pb.start();
-
-        try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(process.getOutputStream()))) {
-            writer.write(password);
-            writer.newLine();
-            writer.write(password);
-            writer.newLine();
-            writer.flush();
-        }
 
         try {
+            Process process = pb.start();
+            try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(process.getOutputStream()))) {
+                writer.write(password);
+                writer.newLine();
+                writer.write(password);
+                writer.newLine();
+                writer.flush();
+            }
+
             if (process.waitFor() != 0) {
                 throw new IOException("Errore durante l'aggiunta dell'utente Samba: " + username);
             }
         } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
             throw new IOException("Errore durante l'aggiunta dell'utente Samba: " + username, e);
         }
+
         loadSambaUsers();
     }
 
     public void removeSambaUser(String username) throws IOException {
         ProcessBuilder pb = new ProcessBuilder("sudo", "smbpasswd", "-x", username);
-        Process process = pb.start();
-        try {
-            if (process.waitFor() != 0) {
-                throw new IOException("Errore durante la rimozione dell'utente Samba: " + username);
-            }
-        } catch (InterruptedException e) {
-            throw new IOException("Errore durante la rimozione dell'utente Samba: " + username, e);
-        }
+        executeCommand(pb, "Errore durante la rimozione dell'utente Samba: " + username);
         loadSambaUsers();
+    }
+
+
+    public ArrayList<String> getSambaUsers() {
+        return new ArrayList<>(sambaUsers);
     }
 
     public String getFormattedGlobalSettings() {
@@ -255,4 +249,52 @@ public class SambaManager {
         }
         return userShares;
     }
+
+    // Avvia il servizio Samba
+    public void startSambaService() throws IOException {
+        ProcessBuilder pb = new ProcessBuilder("sudo", "systemctl", "start", "smbd");
+        executeCommand(pb, "Errore durante l'avvio del servizio Samba");
+    }
+
+    // Ferma il servizio Samba
+    public void stopSambaService() throws IOException {
+        ProcessBuilder pb = new ProcessBuilder("sudo", "systemctl", "stop", "smbd");
+        executeCommand(pb, "Errore durante l'arresto del servizio Samba");
+    }
+
+    // Metodo helper per eseguire comandi con gestione degli errori
+    private void executeCommand(ProcessBuilder pb, String errorMessage) throws IOException {
+        try {
+            Process process = pb.start();
+            if (process.waitFor() != 0) {
+                throw new IOException(errorMessage);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException(errorMessage, e);
+        }
+    }
+
+    private String executeCommandWithOutput(ProcessBuilder pb, String errorMessage) throws IOException {
+        StringBuilder output = new StringBuilder();
+        try {
+            Process process = pb.start();
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    output.append(line).append("\n");
+                }
+            }
+
+            if (process.waitFor() != 0) {
+                throw new IOException(errorMessage);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException(errorMessage, e);
+        }
+
+        return output.toString();
+    }
+
 }

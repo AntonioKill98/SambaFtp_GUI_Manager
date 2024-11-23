@@ -24,7 +24,7 @@
                     <archive>
                         <manifest>
                             <addDefaultImplementationEntries>true</addDefaultImplementationEntries>
-                            <mainClass>org.antonio.SambaFtpManager</mainClass>
+                            <mainClass>org.antonio.MainManager</mainClass>
                         </manifest>
                     </archive>
                 </configuration>

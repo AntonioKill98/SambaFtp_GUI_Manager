@@ -24,11 +24,16 @@ public class UsersManager {
 
         for (String line : passwdLines) {
             String[] parts = line.split(":");
-            if (parts.length > 0) {
+            if (parts.length > 6) { // Controlla che ci siano abbastanza campi
                 String username = parts[0];
-                boolean sambaEnabled = sambaManager.getSambaUsers().contains(username);
-                boolean ftpEnabled = ftpManager.getFtpUsers().contains(username);
-                users.add(new UserBean(username, sambaEnabled, ftpEnabled));
+                String shell = parts[6]; // Ultimo campo: shell
+
+                // Include solo utenti con shell valida per il login
+                if (!shell.equals("/usr/sbin/nologin") && !shell.equals("/bin/false")) {
+                    boolean sambaEnabled = sambaManager.getSambaUsers().contains(username);
+                    boolean ftpEnabled = ftpManager.getFtpUsers().contains(username);
+                    users.add(new UserBean(username, sambaEnabled, ftpEnabled));
+                }
             }
         }
     }

@@ -131,6 +131,7 @@ public class FtpManager {
         return userShares;
     }
 
+    // Metodo per aggiungere una share FTP
     public void addShare(String username, String shareName, String path) throws IOException {
         Path userHome = Paths.get("/home", username);
         Path sharePath = userHome.resolve(shareName);
@@ -141,14 +142,7 @@ public class FtpManager {
             Files.createDirectories(sharePath.getParent());
         }
         ProcessBuilder pb = new ProcessBuilder("sudo", "mount", "--bind", targetPath.toString(), sharePath.toString());
-        Process process = pb.start();
-        try {
-            if (process.waitFor() != 0) {
-                throw new IOException("Errore nel creare il bind mount per " + shareName);
-            }
-        } catch (InterruptedException e) {
-            throw new IOException("Errore nel creare il bind mount per " + shareName, e);
-        }
+        executeCommand(pb, "Errore nel creare il bind mount per " + shareName);
 
         // Aggiungere il bind mount in fstab
         String fstabEntry = targetPath + " " + sharePath + " none bind 0 0";
@@ -157,7 +151,27 @@ public class FtpManager {
         ftpShares.add(new FtpCondBean(username, shareName, path));
     }
 
-    // Modifica nel metodo loadFtpShares
+    /// Metodo per eliminare una share FTP
+    public void removeShare(FtpCondBean share) throws IOException {
+        Path sharePath = Paths.get("/home", share.getUsername(), share.getShareName());
+
+        // Smontare il bind mount
+        ProcessBuilder pb = new ProcessBuilder("sudo", "umount", sharePath.toString());
+        executeCommand(pb, "Errore nello smontare il bind mount per " + share.getShareName());
+
+        // Rimuovere la directory
+        Files.deleteIfExists(sharePath);
+        ftpShares.remove(share);
+
+        // Rimuovere l'entry da fstab
+        Path fstabPath = Paths.get("/etc/fstab");
+        List<String> fstabLines = Files.readAllLines(fstabPath);
+        String mountEntry = share.getPath() + " " + sharePath + " none bind 0 0";
+        fstabLines.removeIf(line -> line.equals(mountEntry));
+        Files.write(fstabPath, fstabLines);
+    }
+
+    // Metodo per caricare tutte le Share FTP
     private void loadFtpShares() throws IOException {
         ftpShares.clear();
         Path homeDir = Paths.get("/home");
@@ -179,30 +193,29 @@ public class FtpManager {
         }
     }
 
-    // Modifica nel metodo removeShare
-    public void removeShare(FtpCondBean share) throws IOException {
-        Path sharePath = Paths.get("/home", share.getUsername(), share.getShareName());
+    // Avvia il servizio FTP
+    public void startFtpService() throws IOException {
+        ProcessBuilder pb = new ProcessBuilder("sudo", "systemctl", "start", "vsftpd");
+        executeCommand(pb, "Errore durante l'avvio del servizio FTP");
+    }
 
-        // Smontare il bind mount
-        ProcessBuilder pb = new ProcessBuilder("sudo", "umount", sharePath.toString());
-        Process process = pb.start();
+    // Ferma il servizio FTP
+    public void stopFtpService() throws IOException {
+        ProcessBuilder pb = new ProcessBuilder("sudo", "systemctl", "stop", "vsftpd");
+        executeCommand(pb, "Errore durante l'arresto del servizio FTP");
+    }
+
+    // Metodo helper per eseguire comandi con gestione degli errori
+    private void executeCommand(ProcessBuilder pb, String errorMessage) throws IOException {
         try {
+            Process process = pb.start();
             if (process.waitFor() != 0) {
-                throw new IOException("Errore nello smontare il bind mount per " + share.getShareName());
+                throw new IOException(errorMessage);
             }
         } catch (InterruptedException e) {
-            throw new IOException("Errore nello smontare il bind mount per " + share.getShareName(), e);
+            Thread.currentThread().interrupt();
+            throw new IOException(errorMessage, e);
         }
-
-        // Rimuovere la directory
-        Files.deleteIfExists(sharePath);
-        ftpShares.remove(share);
-
-        // Rimuovere l'entry da fstab
-        Path fstabPath = Paths.get("/etc/fstab");
-        List<String> fstabLines = Files.readAllLines(fstabPath);
-        String mountEntry = share.getPath() + " " + sharePath + " none bind 0 0";
-        fstabLines.removeIf(line -> line.equals(mountEntry));
-        Files.write(fstabPath, fstabLines);
     }
+
 }
