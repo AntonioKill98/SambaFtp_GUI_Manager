@@ -4,6 +4,7 @@ import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import java.io.*;
 import java.awt.*;
+import java.lang.reflect.Array;
 import java.nio.file.*;
 import java.util.ArrayList;
 import java.util.List;
@@ -42,6 +43,9 @@ public class MainManager {
             ftpManager = new FtpManager("/etc/vsftpd.conf", "/etc/vsftpd.userlist");
             usersManager = new UsersManager(sambaManager, ftpManager);
 
+            //Sezione di Debug
+            debugShares(sambaManager, ftpManager);
+
             // Crea la GUI
             initializeGUI(isSambaActive, isFtpActive);
 
@@ -52,6 +56,35 @@ public class MainManager {
         } catch (IOException e) {
             showErrorDialog("Errore durante l'inizializzazione: " + e.getMessage());
             System.exit(1);
+        }
+    }
+
+    private void debugShares(SambaManager sambaManager, FtpManager ftpManager) {
+        System.out.println("=== DEBUG: Samba Shares ===");
+        ArrayList<SmbCondBean> sambaTemp = sambaManager.getAllShares();
+        int i = 0;
+        for (SmbCondBean singleSmb : sambaTemp) {
+            System.out.println("SambaShare n" + i++);
+            System.out.println("Name: " + singleSmb.getName());
+
+            System.out.println("Properties:");
+            for (String[] property : singleSmb.getProperties()) {
+                System.out.println("  Key: " + property[0] + ", Value: " + property[1]);
+            }
+
+            System.out.println("Valid Users: " + String.join(", ", singleSmb.getValidUsers()));
+            System.out.println("---");
+        }
+
+        System.out.println("=== DEBUG: FTP Shares ===");
+        ArrayList<FtpCondBean> ftpTemp = ftpManager.getFtpShares();
+        i = 0;
+        for (FtpCondBean singleFTP : ftpTemp) {
+            System.out.println("FTPShare n" + i++);
+            System.out.println("Username: " + singleFTP.getUsername());
+            System.out.println("Share Name: " + singleFTP.getShareName());
+            System.out.println("Path: " + singleFTP.getPath());
+            System.out.println("---");
         }
     }
 
@@ -313,7 +346,7 @@ public class MainManager {
 
                 if (selectedFtpShare != null) {
                     // Ottieni i dettagli della condivisione FTP dal bean
-                    FtpCondBean ftpShare = ftpManager.getSharesByUser(userDetailPanel.getName()).stream()
+                    FtpCondBean ftpShare = ftpManager.getSharesByUser(userList.getSelectedValue()).stream()
                             .filter(share -> share.getShareName().equals(selectedFtpShare))
                             .findFirst()
                             .orElse(null);
@@ -325,7 +358,7 @@ public class MainManager {
                     }
                 } else if (selectedSambaShare != null) {
                     // Ottieni i dettagli della condivisione Samba dal bean
-                    SmbCondBean sambaShare = sambaManager.getSharesByUser(userDetailPanel.getName()).stream()
+                    SmbCondBean sambaShare = sambaManager.getSharesByUser(userList.getSelectedValue()).stream()
                             .filter(share -> share.getName().equals(selectedSambaShare))
                             .findFirst()
                             .orElse(null);
