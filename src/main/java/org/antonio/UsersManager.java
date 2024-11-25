@@ -94,18 +94,9 @@ public class UsersManager {
     }
 
     // Rimuove un utente dal sistema e disabilita Samba e FTP
-    public void removeUser(String username) throws IOException {
+    public void removeUser(String username) throws IOException, InterruptedException {
         // Rimuovi le condivisioni e disabilita gli accessi
-        ArrayList<SmbCondBean> sambaShares = sambaManager.getSharesByUser(username);
-        for (SmbCondBean share : sambaShares) {
-            sambaManager.removeUserFromShare(share.getName(), username);
-        }
         sambaManager.removeSambaUser(username);
-
-        ArrayList<FtpCondBean> ftpShares = ftpManager.getSharesByUser(username);
-        for (FtpCondBean share : ftpShares) {
-            ftpManager.removeShare(share);
-        }
         ftpManager.removeFtpUser(username);
 
         // Elimina l'utente dal sistema
@@ -122,6 +113,7 @@ public class UsersManager {
         loadUsers(); // Ricarica la lista utenti
     }
 
+    /**
     // Aggiorna lo stato degli utenti, abilitando/disabilitando Samba e FTP in base ai booleani
     public void updateUsers(String password) throws IOException {
         for (UserBean user : users) {
@@ -151,5 +143,5 @@ public class UsersManager {
                 ftpManager.removeFtpUser(username);
             }
         }
-    }
+    } **/
 }

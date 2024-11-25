@@ -9,7 +9,7 @@ public class FtpManager {
     private String ftpUsersFilePath; // Percorso del file lista utenti FTP
 
     private ArrayList<String[]> config;
-    private ArrayList<FtpCondBean> ftpShares;
+    private ArrayList<FtpCondBean> ftpShares, ftpSharesCopy;
     private ArrayList<String> ftpUsers;
 
     public FtpManager(String vsftpdConfPath, String ftpUsersFilePath) throws IOException {
@@ -17,6 +17,7 @@ public class FtpManager {
         this.ftpUsersFilePath = ftpUsersFilePath;
         this.config = new ArrayList<>();
         this.ftpShares = new ArrayList<>();
+        this.ftpSharesCopy = new ArrayList<>();
         this.ftpUsers = new ArrayList<>();
         loadConfig();
         loadFtpUsers();
@@ -59,7 +60,7 @@ public class FtpManager {
     }
 
     // Aggiorna il file di configurazione salvando un backup
-    public void updateConfig() throws IOException {
+    public void updateConfig() throws IOException, InterruptedException {
         Path configPath = Paths.get(vsftpdConfPath);
         Path backupPath = Paths.get(vsftpdConfPath + ".bak");
         Files.copy(configPath, backupPath, StandardCopyOption.REPLACE_EXISTING);
@@ -70,6 +71,10 @@ public class FtpManager {
                 writer.newLine();
             }
         }
+
+        Thread.sleep(1000);
+
+        loadConfig();
     }
 
     // Carica la lista utenti FTP
@@ -95,7 +100,7 @@ public class FtpManager {
     }
 
     // Rimuove un utente dalla lista FTP e dai bind mount
-    public void removeFtpUser(String username) throws IOException {
+    public void removeFtpUser(String username) throws IOException, InterruptedException {
         Path path = Paths.get(ftpUsersFilePath);
         if (Files.exists(path)) {
             ftpUsers.remove(username);
@@ -105,6 +110,7 @@ public class FtpManager {
         // Rimuovi tutte le condivisioni legate all'utente
         ftpShares.removeIf(share -> share.getUsername().equalsIgnoreCase(username));
         removeUserShares(username);
+        saveSharesOnDisk();
     }
 
     // Rimuove i bind mount associati a un utente
@@ -132,58 +138,142 @@ public class FtpManager {
     }
 
     // Metodo per aggiungere una share FTP
-    public void addShare(String username, String shareName, String path) throws IOException {
-        Path userHome = Paths.get("/home", username);
-        Path sharePath = userHome.resolve(shareName);
-        Path targetPath = Paths.get(path);
-
-        // Creare il bind mount
-        if (!Files.exists(sharePath.getParent())) {
-            Files.createDirectories(sharePath.getParent());
-        }
-        ProcessBuilder pb = new ProcessBuilder("sudo", "mount", "--bind", targetPath.toString(), sharePath.toString());
-        executeCommand(pb, "Errore nel creare il bind mount per " + shareName);
-
-        // Aggiungere il bind mount in fstab
-        String fstabEntry = targetPath + " " + sharePath + " none bind 0 0";
-        Files.write(Paths.get("/etc/fstab"), Collections.singletonList(fstabEntry), StandardOpenOption.APPEND);
-
-        ftpShares.add(new FtpCondBean(username, shareName, path));
+    public void addShare(String username, String shareName, String path) {
+        ftpShares.add(new FtpCondBean(username, shareName, path)); // Solo nella lista temporanea
     }
 
     /// Metodo per eliminare una share FTP
-    public void removeShare(FtpCondBean share) throws IOException {
-        Path sharePath = Paths.get("/home", share.getUsername(), share.getShareName());
+    public void removeShare(FtpCondBean share) {
+        ftpShares.remove(share); // Rimuove solo dalla lista temporanea
+    }
 
-        // Smontare il bind mount
-        ProcessBuilder pb = new ProcessBuilder("sudo", "umount", sharePath.toString());
-        executeCommand(pb, "Errore nello smontare il bind mount per " + share.getShareName());
+    public void saveSharesOnDisk() throws IOException, InterruptedException {
+        System.out.println("DEBUG: Contenuto attuale di ftpShares: " + ftpShares.size());
+        System.out.println("DEBUG: Contenuto attuale di ftpSharesCopy: " + ftpSharesCopy.size());
 
-        // Rimuovere la directory
-        Files.deleteIfExists(sharePath);
-        ftpShares.remove(share);
+        // Rimuovi le condivisioni che non sono più presenti nella lista principale
+        for (FtpCondBean share : new ArrayList<>(ftpSharesCopy)) { // Copia per iterazione sicura
+            if (!ftpShares.contains(share)) {
+                Path sharePath = Paths.get("/home", share.getUsername(), share.getShareName());
+                System.out.println("DEBUG: Rimuovo bind mount non più presente: " + sharePath);
+                if (isBindMount(sharePath)) {
+                    deleteBindMount(sharePath.toString());
+                }
+                ftpSharesCopy.remove(share); // Rimuove anche dalla copia
+            }
+        }
 
-        // Rimuovere l'entry da fstab
+        // Aggiungi le nuove condivisioni presenti nella lista principale
+        for (FtpCondBean share : ftpShares) {
+            Path userHome = Paths.get("/home", share.getUsername());
+            Path sharePath = userHome.resolve(share.getShareName());
+            Path targetPath = Paths.get(share.getPath());
+
+            if (!isBindMount(sharePath)) {
+                System.out.println("DEBUG: Creazione bind mount per " + sharePath);
+                createBindMount(targetPath.toString(), sharePath.toString());
+                if (!ftpSharesCopy.contains(share)) {
+                    ftpSharesCopy.add(share); // Aggiorna la copia
+                }
+            } else {
+                System.out.println("DEBUG: Bind mount già esistente per " + sharePath);
+            }
+        }
+
+        // Ricarica la lista
+        System.out.println("DEBUG: Ricarico la lista delle condivisioni FTP.");
+        Thread.sleep(1000);
+        loadFtpShares(); // Ricarica entrambe le liste
+    }
+
+    // Metodo per verificare se un percorso è un bind mount
+    private boolean isBindMount(Path path) throws IOException {
+        try (BufferedReader reader = new BufferedReader(new FileReader("/proc/self/mountinfo"))) {
+            String line;
+            //System.out.println("DEBUG: Contenuto di /proc/self/mountinfo:");
+            while ((line = reader.readLine()) != null) {
+                //System.out.println(line);
+                if (line.contains(path.toString())) {
+                    System.out.println("DEBUG: Trovato bind mount per " + path);
+                    return true; // Il percorso è un mount point
+                }
+            }
+        }
+        System.out.println("DEBUG: Nessun bind mount trovato per " + path);
+        return false; // Non trovato, quindi non è un mount point
+    }
+
+
+    private void createBindMount(String sourcePath, String targetPath) throws IOException, InterruptedException {
+        Path targetDir = Paths.get(targetPath);
+
+        // Crea la directory di destinazione se non esiste
+        if (!Files.exists(targetDir)) {
+            Files.createDirectories(targetDir);
+        }
+
+        // Esegui il bind mount
+        ProcessBuilder mountPb = new ProcessBuilder("sudo", "mount", "--bind", sourcePath, targetPath);
+        executeCommand(mountPb, "Errore nel creare il bind mount per " + targetPath);
+
+        // Aggiungi al fstab
+        String fstabEntry = sourcePath + " " + targetPath + " none bind 0 0\n";
         Path fstabPath = Paths.get("/etc/fstab");
-        List<String> fstabLines = Files.readAllLines(fstabPath);
-        String mountEntry = share.getPath() + " " + sharePath + " none bind 0 0";
-        fstabLines.removeIf(line -> line.equals(mountEntry));
-        Files.write(fstabPath, fstabLines);
+        List<String> currentFstab = Files.readAllLines(fstabPath);
+        if (currentFstab.stream().noneMatch(line -> line.equals(fstabEntry.trim()))) {
+            try (BufferedWriter writer = new BufferedWriter(new FileWriter(fstabPath.toFile(), true))) {
+                writer.write(fstabEntry);
+            }
+        }
+    }
+
+    private void deleteBindMount(String targetPath) throws IOException, InterruptedException {
+        Path targetDir = Paths.get(targetPath);
+
+        // Smonta il bind mount se esiste
+        if (Files.exists(targetDir)) {
+            ProcessBuilder umountPb = new ProcessBuilder("sudo", "umount", targetPath);
+            try {
+                executeCommand(umountPb, "Errore nello smontare il bind mount per " + targetPath);
+            } catch (IOException e) {
+                System.err.println("Errore durante lo smontaggio: " + e.getMessage());
+            }
+
+            // Rimuovi la directory
+            Files.deleteIfExists(targetDir);
+        }
+
+        // Rimuovi l'entry da /etc/fstab
+        Path fstabPath = Paths.get("/etc/fstab");
+        List<String> currentFstab = Files.readAllLines(fstabPath);
+        String targetEntry = " " + targetPath + " none bind 0 0";
+        currentFstab.removeIf(line -> line.contains(targetEntry.trim()));
+        Files.write(fstabPath, currentFstab);
     }
 
     // Metodo per caricare tutte le Share FTP
     private void loadFtpShares() throws IOException {
         ftpShares.clear();
+        ftpSharesCopy.clear();
         Path homeDir = Paths.get("/home");
+
         if (Files.exists(homeDir)) {
             try (DirectoryStream<Path> stream = Files.newDirectoryStream(homeDir)) {
                 for (Path userDir : stream) {
                     if (Files.isDirectory(userDir)) {
                         try (DirectoryStream<Path> shareStream = Files.newDirectoryStream(userDir)) {
                             for (Path share : shareStream) {
-                                if (Files.isDirectory(share)) { // Solo directory condivise
-                                    ftpShares.add(new FtpCondBean(userDir.getFileName().toString(),
-                                            share.getFileName().toString(), share.toString()));
+                                if (Files.isDirectory(share) && isMountPointUsingProc(share)) { // Solo bind mount
+                                    ftpShares.add(new FtpCondBean(
+                                            userDir.getFileName().toString(),
+                                            share.getFileName().toString(),
+                                            share.toString()
+                                    ));
+                                    ftpSharesCopy.add(new FtpCondBean(
+                                            userDir.getFileName().toString(),
+                                            share.getFileName().toString(),
+                                            share.toString()
+                                    ));
                                 }
                             }
                         }
@@ -191,6 +281,19 @@ public class FtpManager {
                 }
             }
         }
+    }
+
+    // Metodo per verificare se una directory è un mount point usando /proc/self/mountinfo
+    private boolean isMountPointUsingProc(Path path) throws IOException {
+        try (BufferedReader reader = new BufferedReader(new FileReader("/proc/self/mountinfo"))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (line.contains(path.toString())) {
+                    return true; // Il percorso è un mount point
+                }
+            }
+        }
+        return false; // Non trovato, quindi non è un mount point
     }
 
     // Avvia il servizio FTP

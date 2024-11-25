@@ -217,6 +217,16 @@ public class MainManager {
         System.err.println(message);
     }
 
+    private void showInformationDialog(String message) {
+        JOptionPane.showMessageDialog(
+                null,
+                message,
+                "Informazione",
+                JOptionPane.INFORMATION_MESSAGE
+        );
+        System.out.println(message);
+    }
+
     // Crea un'etichetta di stato
     private JLabel createStatusLabel(String serviceName, boolean isActive) {
         JLabel label = new JLabel(serviceName + ": " + (isActive ? "Attivo" : "Inattivo"));
@@ -238,8 +248,8 @@ public class MainManager {
         ftpCheckbox.setEnabled(false);
         sambaCheckbox = new JCheckBox("Abilitazione Samba");
         sambaCheckbox.setEnabled(false);
-        checkboxPanel.add(ftpCheckbox);
         checkboxPanel.add(sambaCheckbox);
+        checkboxPanel.add(ftpCheckbox);
         panel.add(checkboxPanel, BorderLayout.NORTH);
 
         // Lista condivisioni ftp
@@ -286,10 +296,12 @@ public class MainManager {
         deleteShareButton.setPreferredSize(buttonSize);
         deleteShareButton.setMinimumSize(buttonSize);
         deleteShareButton.setMaximumSize(buttonSize);
+        deleteShareButton.addActionListener(e -> handleDeleteShare());
 
         addShareButton.setPreferredSize(buttonSize);
         addShareButton.setMinimumSize(buttonSize);
         addShareButton.setMaximumSize(buttonSize);
+        addShareButton.addActionListener(e -> openAddShareDialog());
 
         infoShareButton.setPreferredSize(buttonSize);
         infoShareButton.setMinimumSize(buttonSize);
@@ -318,14 +330,33 @@ public class MainManager {
             boolean isEditable = ftpCheckbox.isEnabled(); // Controlla se già abilitato
             boolean enable = !isEditable; // Inverte lo stato (toggle)
 
+            if (!enable) { // Quando si clicca "Salva Modifiche"
+                saveUserChanges();
+            }
+
             // Aggiorna i bottoni, le liste e le checkbox
             ftpCheckbox.setEnabled(enable);
             sambaCheckbox.setEnabled(enable);
-            ftpShareList.setEnabled(enable);
-            sambaShareList.setEnabled(enable);
+
+            // Gestisci lo stato delle liste basandoti sull'abilitazione dei protocolli
+            if (ftpCheckbox.isSelected() && enable) {
+                ftpShareList.setEnabled(true); // Abilita se FTP è selezionato e in modifica
+            } else {
+                ftpShareList.setEnabled(false); // Disabilita altrimenti
+            }
+
+            if (sambaCheckbox.isSelected() && enable) {
+                sambaShareList.setEnabled(true); // Abilita se Samba è selezionato e in modifica
+            } else {
+                sambaShareList.setEnabled(false); // Disabilita altrimenti
+            }
+
             deleteShareButton.setEnabled(enable);
             addShareButton.setEnabled(enable);
             infoShareButton.setEnabled(enable);
+
+            // Disabilita/abilita la lista utenti
+            userList.setEnabled(!enable);
 
             // Cambia il testo del bottone in base allo stato
             manageUserButton.setText(enable ? "Salva Modifiche" : "Gestisci Utente");
@@ -424,19 +455,35 @@ public class MainManager {
             ftpShareList.clearSelection();
             sambaShareList.clearSelection();
 
-            // Carica le condivisioni ftp associate all'utente
-            ArrayList<FtpCondBean> shares = ftpManager.getSharesByUser(username);
-            List<String> shareNames = shares.stream()
-                    .map(FtpCondBean::getShareName)
-                    .toList();
-            ftpShareList.setListData(shareNames.toArray(new String[0]));
+            // Gestione Samba
+            if (user.isSambaEnabled()) {
+                // Carica le condivisioni Samba associate all'utente
+                ArrayList<SmbCondBean> sambaShares = sambaManager.getSharesByUser(username);
+                List<String> sambaShareNames = sambaShares.stream()
+                        .map(SmbCondBean::getName) // Ottieni solo i nomi delle condivisioni
+                        .toList();
+                sambaShareList.setListData(sambaShareNames.toArray(new String[0]));
+                //sambaShareList.setEnabled(true); // Sblocca la lista
+            } else {
+                // Svuota e disabilita la lista
+                sambaShareList.setListData(new String[0]); // Svuota
+                //sambaShareList.setEnabled(false); // Disabilita
+            }
 
-            // Carica le condivisioni Samba associate all'utente
-            ArrayList<SmbCondBean> sambaShares = sambaManager.getSharesByUser(username);
-            List<String> sambaShareNames = sambaShares.stream()
-                    .map(SmbCondBean::getName) // Ottieni solo i nomi delle condivisioni
-                    .toList();
-            sambaShareList.setListData(sambaShareNames.toArray(new String[0]));
+            // Gestione FTP
+            if (user.isFtpEnabled()) {
+                // Carica le condivisioni FTP associate all'utente
+                ArrayList<FtpCondBean> ftpShares = ftpManager.getSharesByUser(username);
+                List<String> ftpShareNames = ftpShares.stream()
+                        .map(FtpCondBean::getShareName) // Ottieni solo i nomi delle condivisioni
+                        .toList();
+                ftpShareList.setListData(ftpShareNames.toArray(new String[0]));
+                //ftpShareList.setEnabled(true); // Sblocca la lista
+            } else {
+                // Svuota e disabilita la lista
+                ftpShareList.setListData(new String[0]); // Svuota
+                //ftpShareList.setEnabled(false); // Disabilita
+            }
 
             // Mostra il pannello per la gestione dell'utente
             userDetailPanel.setVisible(true);
@@ -446,7 +493,6 @@ public class MainManager {
             userDetailPanel.setVisible(false); // Nascondi il pannello in caso di errore
         }
     }
-
 
     // Verifica se un pacchetto è installato
     private boolean isPackageInstalled(String packageName) {
@@ -471,6 +517,322 @@ public class MainManager {
         } catch (IOException | InterruptedException e) {
             System.err.println("Errore durante il controllo del servizio " + serviceName + ": " + e.getMessage());
             return false;
+        }
+    }
+
+    private void openAddShareDialog() {
+        //Username
+        String selectedUser = userList.getSelectedValue();
+
+        // Crea la finestra
+        JDialog addShareDialog = new JDialog(mainFrame, "Aggiungi Condivisione per: " + selectedUser, true);
+        addShareDialog.setLayout(new BorderLayout(10, 10));
+        addShareDialog.setSize(500, 450);
+        addShareDialog.setLocationRelativeTo(mainFrame);
+
+        // Checkbox per FTP e Samba
+        JCheckBox ftpCheckBox = new JCheckBox("FTP");
+        JCheckBox sambaCheckBox = new JCheckBox("Samba");
+        // Controlla se l'utente è abilitato a Samba o FTP
+        boolean isSambaEnabled = usersManager.getUsers().stream()
+                .anyMatch(user -> user.getUsername().equalsIgnoreCase(selectedUser) && user.isSambaEnabled());
+        boolean isFtpEnabled = usersManager.getUsers().stream()
+                .anyMatch(user -> user.getUsername().equalsIgnoreCase(selectedUser) && user.isFtpEnabled());
+        // Disabilita le checkbox se l'utente non è abilitato
+        sambaCheckBox.setEnabled(isSambaEnabled);
+        ftpCheckBox.setEnabled(isFtpEnabled);
+
+        // Pannello per i campi di input
+        JPanel inputPanel = new JPanel(new GridLayout(0, 2, 5, 5));
+
+        // Campi comuni per FTP e Samba
+        JLabel shareNameLabel = new JLabel("Nome Condivisione:");
+        JTextField shareNameField = new JTextField();
+        JLabel pathLabel = new JLabel("Percorso:");
+        JTextField pathField = new JTextField();
+        JButton pathButton = new JButton("Seleziona Cartella");
+
+        // Campi specifici per Samba
+        JLabel sambaCommentLabel = new JLabel("Commento:");
+        JTextField sambaCommentField = new JTextField();
+        JLabel sambaBrowsableLabel = new JLabel("Browsable:");
+        JTextField sambaBrowsableField = new JTextField("yes"); // Default
+        JLabel sambaWritableLabel = new JLabel("Writable:");
+        JTextField sambaWritableField = new JTextField("yes"); // Default
+        JLabel sambaGuestOkLabel = new JLabel("Guest OK:");
+        JTextField sambaGuestOkField = new JTextField("no"); // Default
+        JLabel sambaCreateMaskLabel = new JLabel("Create Mask:");
+        JTextField sambaCreateMaskField = new JTextField("0664"); // Default
+        JLabel sambaDirectoryMaskLabel = new JLabel("Directory Mask:");
+        JTextField sambaDirectoryMaskField = new JTextField("0775"); // Default
+
+        // Disabilita i campi Samba inizialmente
+        sambaCommentField.setEnabled(false);
+        sambaBrowsableField.setEnabled(false);
+        sambaWritableField.setEnabled(false);
+        sambaGuestOkField.setEnabled(false);
+        sambaCreateMaskField.setEnabled(false);
+        sambaDirectoryMaskField.setEnabled(false);
+
+        // Abilita i campi in base alla checkbox Samba
+        sambaCheckBox.addActionListener(e -> {
+            boolean enabled = sambaCheckBox.isSelected();
+            sambaCommentField.setEnabled(enabled);
+            sambaBrowsableField.setEnabled(enabled);
+            sambaWritableField.setEnabled(enabled);
+            sambaGuestOkField.setEnabled(enabled);
+            sambaCreateMaskField.setEnabled(enabled);
+            sambaDirectoryMaskField.setEnabled(enabled);
+        });
+
+        // Aggiungi il listener al pulsante di selezione della cartella
+        pathButton.addActionListener(e -> {
+            JFileChooser fileChooser = new JFileChooser();
+            fileChooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+            int result = fileChooser.showOpenDialog(addShareDialog);
+            if (result == JFileChooser.APPROVE_OPTION) {
+                pathField.setText(fileChooser.getSelectedFile().getAbsolutePath());
+            }
+        });
+
+        // Aggiungi i campi al pannello di input
+        inputPanel.add(ftpCheckBox);
+        inputPanel.add(sambaCheckBox);
+        inputPanel.add(shareNameLabel);
+        inputPanel.add(shareNameField);
+        inputPanel.add(pathLabel);
+        JPanel pathPanel = new JPanel(new BorderLayout());
+        pathPanel.add(pathField, BorderLayout.CENTER);
+        pathPanel.add(pathButton, BorderLayout.EAST);
+        inputPanel.add(pathPanel);
+        inputPanel.add(sambaCommentLabel);
+        inputPanel.add(sambaCommentField);
+        inputPanel.add(sambaBrowsableLabel);
+        inputPanel.add(sambaBrowsableField);
+        inputPanel.add(sambaWritableLabel);
+        inputPanel.add(sambaWritableField);
+        inputPanel.add(sambaGuestOkLabel);
+        inputPanel.add(sambaGuestOkField);
+        inputPanel.add(sambaCreateMaskLabel);
+        inputPanel.add(sambaCreateMaskField);
+        inputPanel.add(sambaDirectoryMaskLabel);
+        inputPanel.add(sambaDirectoryMaskField);
+
+        // Pulsanti
+        JButton confirmButton = new JButton("Conferma");
+        JButton cancelButton = new JButton("Annulla");
+
+        confirmButton.addActionListener(e -> {
+            try {
+                // Controlla i dati comuni
+                if (shareNameField.getText().isEmpty() || pathField.getText().isEmpty()) {
+                    showErrorDialog("Nome Condivisione e Percorso sono obbligatori.");
+                    return;
+                }
+
+                String shareName = shareNameField.getText();
+                String path = pathField.getText();
+
+                if (selectedUser == null) {
+                    showErrorDialog("Seleziona un utente prima di aggiungere una condivisione.");
+                    return;
+                }
+
+                // Gestione FTP
+                if (ftpCheckBox.isSelected()) {
+                    // Controlla duplicati
+                    boolean ftpDuplicate = ftpManager.getSharesByUser(selectedUser).stream()
+                            .anyMatch(share -> share.getShareName().equals(shareName) || share.getPath().equals(path));
+
+                    if (ftpDuplicate) {
+                        showErrorDialog("Esiste già una condivisione FTP con lo stesso nome o percorso per l'utente selezionato.");
+                        return;
+                    }
+
+                    // Usa addShare del manager
+                    ftpManager.addShare(selectedUser, shareName, path);
+
+                    //Aggiorna la lista delle condivisioni FTP visivamente
+                    ftpShareList.setListData(ftpManager.getSharesByUser(selectedUser)
+                            .stream()
+                            .map(FtpCondBean::getShareName)
+                            .toArray(String[]::new));
+                }
+
+                // Gestione Samba
+                if (sambaCheckBox.isSelected()) {
+                    // Controllo per nome duplicato con percorso diverso
+                    boolean nameConflict = sambaManager.getAllShares().stream()
+                            .anyMatch(share -> share.getName().equalsIgnoreCase(shareName) &&
+                                    share.getProperties().stream()
+                                            .noneMatch(property -> property[0].equalsIgnoreCase("path") &&
+                                                    property[1].equals(path)));
+
+                    if (nameConflict) {
+                        showErrorDialog("Esiste già una condivisione Samba con lo stesso nome ma un percorso diverso. Modifica i dettagli.");
+                        return;
+                    }
+
+                    // Controllo per percorso già condiviso
+                    SmbCondBean existingShare = sambaManager.getAllShares().stream()
+                            .filter(share -> share.getProperties().stream()
+                                    .anyMatch(property -> property[0].equalsIgnoreCase("path") && property[1].equals(path)))
+                            .findFirst()
+                            .orElse(null);
+
+                    if (existingShare != null) {
+                        // Aggiungi l'utente ai valid users
+                        existingShare.addValidUser(selectedUser);
+                        sambaManager.modifyShare(existingShare.getName(), existingShare);
+
+                        // Mostra dialog informativo
+                        showInformationDialog("Il percorso è già condiviso con il nome '" + existingShare.getName() +
+                                "'. L'utente è stato aggiunto ai valid users.");
+                    } else {
+                        // Crea una nuova condivisione
+                        SmbCondBean sambaShare = new SmbCondBean(shareName);
+                        sambaShare.addProperty("path", path);
+                        sambaShare.addProperty("comment", sambaCommentField.getText());
+                        sambaShare.addProperty("browsable", sambaBrowsableField.getText());
+                        sambaShare.addProperty("writable", sambaWritableField.getText());
+                        sambaShare.addProperty("guest ok", sambaGuestOkField.getText());
+                        sambaShare.addProperty("create mask", sambaCreateMaskField.getText());
+                        sambaShare.addProperty("directory mask", sambaDirectoryMaskField.getText());
+                        sambaShare.addValidUser(selectedUser);
+
+                        sambaManager.addShare(sambaShare);
+                    }
+
+                    // Aggiorna la lista delle condivisioni Samba visivamente
+                    sambaShareList.setListData(sambaManager.getSharesByUser(selectedUser)
+                            .stream()
+                            .map(SmbCondBean::getName)
+                            .toArray(String[]::new));
+                }
+
+                addShareDialog.dispose();
+            } catch (Exception ex) {
+                showErrorDialog("Errore durante l'aggiunta della condivisione: " + ex.getMessage());
+            }
+        });
+
+        cancelButton.addActionListener(e -> addShareDialog.dispose());
+
+        // Pannello per i pulsanti
+        JPanel buttonPanel = new JPanel();
+        buttonPanel.add(confirmButton);
+        buttonPanel.add(cancelButton);
+
+        // Aggiungi tutto alla finestra
+        addShareDialog.add(inputPanel, BorderLayout.CENTER);
+        addShareDialog.add(buttonPanel, BorderLayout.SOUTH);
+
+        addShareDialog.setVisible(true);
+    }
+
+    private void handleDeleteShare() {
+        try {
+            String selectedFtpShare = ftpShareList.getSelectedValue();
+            String selectedSambaShare = sambaShareList.getSelectedValue();
+            String selectedUser = userList.getSelectedValue();
+
+            if (selectedUser == null) {
+                showErrorDialog("Seleziona un utente prima di eliminare una condivisione.");
+                return;
+            }
+
+            if (selectedFtpShare == null && selectedSambaShare == null) {
+                showErrorDialog("Seleziona una condivisione da eliminare.");
+                return;
+            }
+
+            String shareName = selectedFtpShare != null ? selectedFtpShare : selectedSambaShare;
+            String protocol = selectedFtpShare != null ? "FTP" : "Samba";
+
+            // Chiede conferma all'utente
+            int confirm = JOptionPane.showConfirmDialog(
+                    null,
+                    "Sei sicuro di voler rimuovere la condivisione " + shareName + ", " + protocol + "?",
+                    "Conferma Eliminazione",
+                    JOptionPane.YES_NO_OPTION,
+                    JOptionPane.WARNING_MESSAGE
+            );
+
+            if (confirm != JOptionPane.YES_OPTION) {
+                return; // L'utente ha annullato
+            }
+
+            if (selectedFtpShare != null) {
+                // Rimuove la condivisione FTP
+                FtpCondBean ftpShare = ftpManager.getSharesByUser(selectedUser).stream()
+                        .filter(share -> share.getShareName().equals(selectedFtpShare))
+                        .findFirst()
+                        .orElse(null);
+
+                if (ftpShare != null) {
+                    ftpManager.removeShare(ftpShare); // Rimuove solo dalla lista temporanea
+                    ftpShareList.setListData(ftpManager.getSharesByUser(selectedUser)
+                            .stream()
+                            .map(FtpCondBean::getShareName)
+                            .toArray(String[]::new)); // Aggiorna la lista visivamente
+                } else {
+                    showErrorDialog("Condivisione FTP non trovata.");
+                }
+            } else if (selectedSambaShare != null) {
+                // Rimuove l'utente dai valid users di una condivisione Samba
+                SmbCondBean sambaShare = sambaManager.getSharesByUser(selectedUser).stream()
+                        .filter(share -> share.getName().equals(selectedSambaShare))
+                        .findFirst()
+                        .orElse(null);
+
+                if (sambaShare != null) {
+                    sambaShare.removeValidUser(selectedUser);
+                    sambaManager.modifyShare(sambaShare.getName(), sambaShare); // Usa il modifyShare aggiornato
+                    sambaShareList.setListData(sambaManager.getSharesByUser(selectedUser)
+                            .stream()
+                            .map(SmbCondBean::getName)
+                            .toArray(String[]::new)); // Aggiorna la lista visivamente
+                } else {
+                    showErrorDialog("Condivisione Samba non trovata.");
+                }
+            }
+        } catch (Exception ex) {
+            showErrorDialog("Errore durante l'eliminazione della condivisione: " + ex.getMessage());
+        }
+    }
+
+    private void saveUserChanges() {
+        // Chiedi conferma all'utente
+        int confirm = JOptionPane.showConfirmDialog(
+                null,
+                "Sei sicuro di voler salvare le modifiche? I servizi FTP e Samba saranno riavviati.",
+                "Conferma Salvataggio",
+                JOptionPane.YES_NO_OPTION,
+                JOptionPane.WARNING_MESSAGE
+        );
+
+        if (confirm != JOptionPane.YES_OPTION) {
+            return; // L'utente ha annullato l'operazione
+        }
+
+        try {
+            // Disattiva i servizi Samba e FTP
+            sambaManager.stopSambaService();
+            ftpManager.stopFtpService();
+
+            // Aggiorna le configurazioni
+            ftpManager.saveSharesOnDisk();
+            sambaManager.updateConfig();
+
+            // Riattiva i servizi Samba e FTP
+            sambaManager.startSambaService();
+            ftpManager.startFtpService();
+
+            // Mostra messaggio di successo
+            showInformationDialog("Modifiche salvate con successo e servizi riavviati.");
+        } catch (Exception ex) {
+            // Gestione degli errori
+            showErrorDialog("Errore durante il salvataggio delle modifiche: " + ex.getMessage());
         }
     }
 

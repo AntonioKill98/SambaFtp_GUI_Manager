@@ -82,7 +82,7 @@ public class SambaManager {
         }
     }
 
-    public void loadSambaUsers() throws IOException {
+    private void loadSambaUsers() throws IOException {
         sambaUsers.clear();
         ProcessBuilder pb = new ProcessBuilder("pdbedit", "-L");
         String output = executeCommandWithOutput(pb, "Errore durante il caricamento degli utenti Samba");
@@ -123,11 +123,24 @@ public class SambaManager {
     }
 
     public void removeSambaUser(String username) throws IOException {
+        // Itera su tutte le condivisioni
+        for (SmbCondBean share : shares) {
+            if (share.getValidUsers().contains(username)) {
+                // Rimuovi l'utente dai valid users
+                share.removeValidUser(username);
+
+                // Aggiorna la condivisione tramite modifyShare
+                modifyShare(share.getName(), share);
+            }
+        }
+
+        // Rimuovi l'utente Samba
         ProcessBuilder pb = new ProcessBuilder("sudo", "smbpasswd", "-x", username);
         executeCommand(pb, "Errore durante la rimozione dell'utente Samba: " + username);
+
+        // Ricarica la lista degli utenti Samba
         loadSambaUsers();
     }
-
 
     public ArrayList<String> getSambaUsers() {
         return new ArrayList<>(sambaUsers);
@@ -160,19 +173,13 @@ public class SambaManager {
     public ArrayList<SmbCondBean> getAllShares() {
         return new ArrayList<>(shares);
     }
-
     public void addGlobalSetting(String key, String value) {
         addOrUpdate(globalSettings, key, value);
     }
-
     public void addHomeSetting(String key, String value) {
         addOrUpdate(homeSettings, key, value);
     }
-
-    public void removeGlobalSetting(String key) {
-        removeSetting(globalSettings, key);
-    }
-
+    public void removeGlobalSetting(String key) { removeSetting(globalSettings, key); }
     public void removeHomeSetting(String key) {
         removeSetting(homeSettings, key);
     }
@@ -184,26 +191,24 @@ public class SambaManager {
     public void modifyShare(String shareName, SmbCondBean updatedShare) {
         for (int i = 0; i < shares.size(); i++) {
             if (shares.get(i).getName().equalsIgnoreCase(shareName)) {
+                // Controlla se la condivisione ha ancora utenti validi
+                if (updatedShare.getValidUsers().isEmpty()) {
+                    // Rimuove la condivisione se non ha più valid users
+                    shares.remove(i);
+                    return;
+                }
+                // Aggiorna la condivisione
                 shares.set(i, updatedShare);
                 return;
             }
         }
         throw new IllegalArgumentException("Condivisione non trovata: " + shareName);
     }
-
-    public void removeUserFromShare(String shareName, String username) {
-        SmbCondBean share = getShare(shareName);
-        if (share != null) {
-            share.removeValidUser(username);
-        } else {
-            throw new IllegalArgumentException("Condivisione non trovata: " + shareName);
-        }
-    }
-
+    /**
     public void removeShare(String shareName) {
         shares.removeIf(share -> share.getName().equalsIgnoreCase(shareName));
     }
-
+    **/
     public SmbCondBean getShare(String shareName) {
         return shares.stream()
                 .filter(share -> share.getName().equalsIgnoreCase(shareName))
@@ -211,7 +216,18 @@ public class SambaManager {
                 .orElse(null);
     }
 
-    public void updateConfig() throws IOException {
+    // Ritorna tutte le condivisioni di un dato utente
+    public ArrayList<SmbCondBean> getSharesByUser(String username) {
+        ArrayList<SmbCondBean> userShares = new ArrayList<>();
+        for (SmbCondBean share : shares) {
+            if (share.getValidUsers().contains(username)) {
+                userShares.add(share);
+            }
+        }
+        return userShares;
+    }
+
+    public void updateConfig() throws IOException, InterruptedException {
         Path originalPath = Paths.get(configPath);
         Path backupPath = Paths.get(configPath + ".bak");
         Files.copy(originalPath, backupPath, StandardCopyOption.REPLACE_EXISTING);
@@ -223,6 +239,10 @@ public class SambaManager {
             writer.write("\n");
             writer.write(getFormattedShares());
         }
+
+        Thread.sleep(1000);
+
+        loadConfig();
     }
 
     private void addOrUpdate(ArrayList<String[]> settings, String key, String value) {
@@ -237,17 +257,6 @@ public class SambaManager {
 
     private void removeSetting(ArrayList<String[]> settings, String key) {
         settings.removeIf(pair -> pair[0].equalsIgnoreCase(key));
-    }
-
-    // Ritorna tutte le condivisioni di un dato utente
-    public ArrayList<SmbCondBean> getSharesByUser(String username) {
-        ArrayList<SmbCondBean> userShares = new ArrayList<>();
-        for (SmbCondBean share : shares) {
-            if (share.getValidUsers().contains(username)) {
-                userShares.add(share);
-            }
-        }
-        return userShares;
     }
 
     // Avvia il servizio Samba
