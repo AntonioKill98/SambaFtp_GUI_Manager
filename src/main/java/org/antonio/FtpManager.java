@@ -535,4 +535,29 @@ public class FtpManager {
             throw new IOException(errorMessage, e);
         }
     }
+
+    public void readConfigFromText(String configText) throws IOException {
+        printDebug("Inizio aggiornamento configurazione interna da testo.");
+        config.clear();
+
+        BufferedReader reader = new BufferedReader(new StringReader(configText));
+        String line;
+
+        while ((line = reader.readLine()) != null) {
+            line = line.trim();
+            if (!line.isEmpty() && !line.startsWith("#")) {
+                String[] parts = line.split("=", 2);
+                if (parts.length == 2) {
+                    config.add(new String[]{parts[0].trim(), parts[1].trim()});
+                    printDebug("Configurazione aggiornata: " + parts[0].trim() + " = " + parts[1].trim());
+                } else {
+                    printDebug("Riga ignorata (non valida): " + line);
+                }
+            } else {
+                printDebug("Riga ignorata (vuota o commento): " + line);
+            }
+        }
+
+        printDebug("Aggiornamento configurazione interna completato.");
+    }
 }

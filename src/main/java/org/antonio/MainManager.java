@@ -1383,12 +1383,122 @@ public class MainManager {
         addUserDialog.setVisible(true);
     }
 
-    private void handleSambaConfigButton() {
+    public void handleSambaConfigButton() {
+        // Crea una finestra per la modifica della configurazione Samba
+        JFrame frame = new JFrame("Modifica Configurazione Samba");
+        frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
+        frame.setSize(800, 600);
 
+        // Carica la configurazione attuale dal SambaManager
+        String currentConfig = sambaManager.getFormattedGlobalSettings()
+                + "\n"
+                + sambaManager.getFormattedHomeSettings()
+                + "\n"
+                + sambaManager.getFormattedShares();
+
+        // Aggiungi una Text Area per visualizzare e modificare il contenuto
+        JTextArea textArea = new JTextArea(currentConfig);
+        textArea.setFont(new Font("Monospaced", Font.PLAIN, 12)); // Font per file di configurazione
+        JScrollPane scrollPane = new JScrollPane(textArea);
+
+        // Aggiungi i pulsanti Salva e Annulla
+        JButton saveButton = new JButton("Salva");
+        JButton cancelButton = new JButton("Annulla");
+
+        JPanel buttonPanel = new JPanel();
+        buttonPanel.add(saveButton);
+        buttonPanel.add(cancelButton);
+
+        // Layout della finestra
+        frame.setLayout(new BorderLayout());
+        frame.add(scrollPane, BorderLayout.CENTER);
+        frame.add(buttonPanel, BorderLayout.SOUTH);
+
+        // Listener per il pulsante Salva
+        saveButton.addActionListener(e -> {
+            String newConfig = textArea.getText();
+
+            try {
+                // Aggiorna la configurazione interna con il nuovo testo
+                sambaManager.readConfigFromText(newConfig);
+
+                // Salva il nuovo contenuto nel file
+                sambaManager.updateConfig();
+
+                //Riavvio Samba
+                sambaManager.stopSambaService();
+                sambaManager.startSambaService();
+
+                // Mostra una notifica
+                showInfoDialog("Configurazione Samba aggiornata con successo, servizio riavviato.");
+                frame.dispose();
+            } catch (IOException | InterruptedException ex) {
+                showErrorDialog("Errore durante l'aggiornamento della configurazione: " + ex.getMessage());
+            }
+        });
+
+        // Listener per il pulsante Annulla
+        cancelButton.addActionListener(e -> frame.dispose());
+
+        // Mostra la finestra
+        frame.setVisible(true);
     }
 
-    private void handleFtpConfigButton() {
+    public void handleFtpConfigButton() {
+        // Crea una finestra per la modifica della configurazione FTP
+        JFrame frame = new JFrame("Modifica Configurazione FTP");
+        frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
+        frame.setSize(800, 600);
 
+        // Carica la configurazione attuale dal FtpManager
+        String currentConfig = ftpManager.getFormattedConfig();
+
+        // Aggiungi una Text Area per visualizzare e modificare il contenuto
+        JTextArea textArea = new JTextArea(currentConfig);
+        textArea.setFont(new Font("Monospaced", Font.PLAIN, 12)); // Font per file di configurazione
+        JScrollPane scrollPane = new JScrollPane(textArea);
+
+        // Aggiungi i pulsanti Salva e Annulla
+        JButton saveButton = new JButton("Salva");
+        JButton cancelButton = new JButton("Annulla");
+
+        JPanel buttonPanel = new JPanel();
+        buttonPanel.add(saveButton);
+        buttonPanel.add(cancelButton);
+
+        // Layout della finestra
+        frame.setLayout(new BorderLayout());
+        frame.add(scrollPane, BorderLayout.CENTER);
+        frame.add(buttonPanel, BorderLayout.SOUTH);
+
+        // Listener per il pulsante Salva
+        saveButton.addActionListener(e -> {
+            String newConfig = textArea.getText();
+
+            try {
+                // Aggiorna la configurazione interna con il nuovo testo
+                ftpManager.readConfigFromText(newConfig);
+
+                // Salva il nuovo contenuto nel file
+                ftpManager.updateConfig();
+
+                //Riavvia il Servizio
+                ftpManager.stopFtpService();
+                ftpManager.startFtpService();
+
+                // Mostra una notifica
+                showInfoDialog("Configurazione FTP aggiornata con successo, servizio riavviato.");
+                frame.dispose();
+            } catch (IOException | InterruptedException ex) {
+                showErrorDialog("Errore durante l'aggiornamento della configurazione: " + ex.getMessage());
+            }
+        });
+
+        // Listener per il pulsante Annulla
+        cancelButton.addActionListener(e -> frame.dispose());
+
+        // Mostra la finestra
+        frame.setVisible(true);
     }
 
     public static void main(String[] args) {

@@ -410,4 +410,79 @@ public class SambaManager {
             throw e;
         }
     }
+
+    public void readConfigFromText(String configText) throws IOException {
+        printDebug("Inizio aggiornamento della configurazione interna da testo.");
+
+        globalSettings.clear();
+        homeSettings.clear();
+        shares.clear();
+
+        BufferedReader reader = new BufferedReader(new StringReader(configText));
+        SmbCondBean currentShare = null;
+        String currentSection = null;
+        String line;
+
+        while ((line = reader.readLine()) != null) {
+            line = line.trim();
+            if (line.isEmpty() || line.startsWith("#")) {
+                continue;
+            }
+
+            if (line.startsWith("[")) {
+                // Gestione cambio sezione
+                String section = line.substring(1, line.length() - 1);
+                currentSection = section.toLowerCase();
+
+                if (currentShare != null) {
+                    shares.add(currentShare);
+                    printDebug("Condivisione aggiunta: " + currentShare.getName());
+                }
+
+                if (section.equalsIgnoreCase("global")) {
+                    currentShare = null;
+                    printDebug("Sezione Global individuata.");
+                } else if (section.equalsIgnoreCase("homes")) {
+                    currentShare = null;
+                    printDebug("Sezione Homes individuata.");
+                } else {
+                    currentShare = new SmbCondBean(section);
+                    printDebug("Inizio nuova condivisione: " + section);
+                }
+            } else {
+                String[] keyValue = line.split("=", 2);
+                if (keyValue.length == 2) {
+                    String key = keyValue[0].trim();
+                    String value = keyValue[1].trim();
+
+                    if ("global".equals(currentSection)) {
+                        globalSettings.add(new String[]{key, value});
+                        printDebug("Aggiunta impostazione Global: " + key + " = " + value);
+                    } else if ("homes".equals(currentSection)) {
+                        homeSettings.add(new String[]{key, value});
+                        printDebug("Aggiunta impostazione Home: " + key + " = " + value);
+                    } else if (currentShare != null) {
+                        if (key.equalsIgnoreCase("valid users")) {
+                            String[] users = value.split(",");
+                            for (String user : users) {
+                                currentShare.addValidUser(user.trim());
+                                printDebug("Aggiunto valid user: " + user.trim());
+                            }
+                        } else {
+                            currentShare.addProperty(key, value);
+                            printDebug("Aggiunta proprietà alla condivisione: " + key + " = " + value);
+                        }
+                    }
+                }
+            }
+        }
+
+        if (currentShare != null) {
+            shares.add(currentShare);
+            printDebug("Condivisione finale aggiunta: " + currentShare.getName());
+        }
+
+        printDebug("Aggiornamento configurazione interna completato.");
+    }
+
 }
