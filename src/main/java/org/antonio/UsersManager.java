@@ -1,13 +1,25 @@
 package org.antonio;
 import java.io.*;
-import java.nio.file.*;
-import java.util.*;
+import java.io.IOException;
+import java.nio.file.FileSystems;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.attribute.PosixFileAttributeView;
+import java.nio.file.attribute.PosixFilePermission;
+import java.nio.file.attribute.UserPrincipalLookupService;
+import java.nio.file.attribute.GroupPrincipal;
+import java.util.ArrayList;
+import java.util.EnumSet;
+import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 public class UsersManager {
     private ArrayList<UserBean> users;
     private SambaManager sambaManager;
     private FtpManager ftpManager;
-    private boolean debugEnabled; // Flag per il debug
+    private boolean debugEnabled;
 
     public UsersManager(SambaManager sambaManager, FtpManager ftpManager) throws IOException {
         this.sambaManager = sambaManager;
@@ -92,6 +104,9 @@ public class UsersManager {
     public void addUser(String username, String password, boolean enableFtp, boolean enableSamba) throws IOException {
         printDebug("Inizio aggiunta dell'utente al sistema: " + username);
 
+        // Nome del gruppo condiviso
+        String sharedGroupName = "shareGroup";
+
         // Aggiunge l'utente al sistema
         ProcessBuilder pb = new ProcessBuilder("sudo", "useradd", "-m", username);
         printDebug("Esecuzione del comando per aggiungere l'utente: " + String.join(" ", pb.command()));
@@ -106,6 +121,23 @@ public class UsersManager {
             printDebug("Comando interrotto durante l'aggiunta dell'utente: " + username);
             Thread.currentThread().interrupt();
             throw new IOException("Errore durante l'aggiunta dell'utente " + username, e);
+        }
+
+        // Aggiunge l'utente al gruppo condiviso
+        printDebug("Aggiunta dell'utente " + username + " al gruppo condiviso " + sharedGroupName);
+        ProcessBuilder groupAddPb = new ProcessBuilder("sudo", "usermod", "-aG", sharedGroupName, username);
+        printDebug("Esecuzione del comando per aggiungere l'utente al gruppo: " + String.join(" ", groupAddPb.command()));
+        Process groupAddProcess = groupAddPb.start();
+        try {
+            if (groupAddProcess.waitFor() != 0) {
+                printDebug("Errore durante l'aggiunta dell'utente " + username + " al gruppo " + sharedGroupName);
+                throw new IOException("Errore durante l'aggiunta dell'utente " + username + " al gruppo " + sharedGroupName);
+            }
+            printDebug("Utente aggiunto con successo al gruppo condiviso: " + sharedGroupName);
+        } catch (InterruptedException e) {
+            printDebug("Comando interrotto durante l'aggiunta dell'utente al gruppo: " + username);
+            Thread.currentThread().interrupt();
+            throw new IOException("Errore durante l'aggiunta dell'utente " + username + " al gruppo " + sharedGroupName, e);
         }
 
         // Imposta la password
@@ -272,4 +304,85 @@ public class UsersManager {
             printDebug("Utente non trovato nella lista: " + username);
         }
     }
+
+    public void setPermissionForUser(String username) throws IOException {
+        printDebug("Inizio verifica e impostazione dei permessi per l'utente: " + username);
+
+        // Nome del gruppo condiviso
+        String sharedGroupName = "shareGroup";
+
+        // Ottieni tutti i percorsi associati all'utente (FTP e Samba)
+        List<String> userPaths = new ArrayList<>();
+
+        // Percorsi FTP
+        List<String> ftpPaths = ftpManager.getSharesByUser(username).stream()
+                .map(FtpCondBean::getPath)
+                .collect(Collectors.toList());
+        userPaths.addAll(ftpPaths);
+        printDebug("Percorsi FTP trovati per l'utente: " + ftpPaths);
+
+        // Percorsi Samba
+        List<String> sambaPaths = sambaManager.getSharesByUser(username).stream()
+                .flatMap(share -> share.getProperties().stream()
+                        .filter(property -> property[0].equalsIgnoreCase("path"))
+                        .map(property -> property[1]))
+                .collect(Collectors.toList());
+        userPaths.addAll(sambaPaths);
+        printDebug("Percorsi Samba trovati per l'utente: " + sambaPaths);
+
+        // Elimina duplicati
+        userPaths = userPaths.stream().distinct().collect(Collectors.toList());
+        printDebug("Elenco completo e univoco dei percorsi per l'utente: " + userPaths);
+
+        // Ottieni il gruppo condiviso
+        UserPrincipalLookupService lookupService = FileSystems.getDefault().getUserPrincipalLookupService();
+        GroupPrincipal sharedGroup = lookupService.lookupPrincipalByGroupName(sharedGroupName);
+
+        // Imposta i permessi su ogni directory
+        for (String path : userPaths) {
+            Path dirPath = Paths.get(path);
+
+            if (!Files.exists(dirPath) || !Files.isDirectory(dirPath)) {
+                printDebug("Percorso non valido o inesistente, ignorato: " + path);
+                continue;
+            }
+
+            printDebug("Verifica dei permessi per il percorso: " + path);
+            PosixFileAttributeView fileAttributeView = Files.getFileAttributeView(dirPath, PosixFileAttributeView.class);
+            if (fileAttributeView == null) {
+                printDebug("Il percorso non supporta i permessi POSIX, ignorato: " + path);
+                continue;
+            }
+
+            // Ottieni il gruppo attuale della directory
+            GroupPrincipal currentGroup = fileAttributeView.readAttributes().group();
+            printDebug("Gruppo attuale per il percorso " + path + ": " + currentGroup.getName());
+
+            // Imposta il gruppo della directory a "shareGroup" se necessario
+            if (!currentGroup.equals(sharedGroup)) {
+                printDebug("Impostazione del gruppo condiviso '" + sharedGroupName + "' per il percorso: " + path);
+                fileAttributeView.setGroup(sharedGroup);
+            } else {
+                printDebug("Il gruppo condiviso è già impostato per il percorso: " + path);
+            }
+
+            // Verifica e aggiorna i permessi
+            Set<PosixFilePermission> permissions = Files.getPosixFilePermissions(dirPath);
+            Set<PosixFilePermission> requiredPermissions = EnumSet.of(
+                    PosixFilePermission.GROUP_READ, PosixFilePermission.GROUP_WRITE, PosixFilePermission.GROUP_EXECUTE
+            );
+
+            if (!permissions.containsAll(requiredPermissions)) {
+                printDebug("Permessi insufficienti per il gruppo '" + sharedGroupName + "' sul percorso: " + path);
+                permissions.addAll(requiredPermissions);
+                Files.setPosixFilePermissions(dirPath, permissions);
+                printDebug("Permessi aggiornati con successo per il gruppo '" + sharedGroupName + "' sul percorso: " + path);
+            } else {
+                printDebug("Permessi già completi per il gruppo '" + sharedGroupName + "' sul percorso: " + path);
+            }
+        }
+
+        printDebug("Impostazione permessi completata per l'utente: " + username);
+    }
+
 }

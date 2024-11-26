@@ -16,7 +16,7 @@ public class MainManager {
     private JList<String> userList;
     private JCheckBox ftpCheckbox, sambaCheckbox;
     private JList<String> ftpShareList, sambaShareList;
-    private JButton manageUserButton, deleteShareButton, addShareButton, sambaButton, ftpButton, infoShareButton, addUserButton, deleteUserButton;
+    private JButton manageUserButton, deleteShareButton, addShareButton, sambaButton, ftpButton, infoShareButton, addUserButton, deleteUserButton, configSambaButton, configFtpButton;
     private JLabel sambaStatusLabel, ftpStatusLabel;
     private JPanel userDetailPanel, configButtonPanel, mainPanel, statusPanel, userButtonsPanel;
     private boolean debugEnabled; // Flag per il debug
@@ -202,50 +202,50 @@ public class MainManager {
 
     // Avvia un timer per aggiornare periodicamente lo stato dei servizi
     private void startStatusUpdateTimer() {
-        printDebug("Avvio del timer per l'aggiornamento periodico dello stato dei servizi.");
+        //printDebug("Avvio del timer per l'aggiornamento periodico dello stato dei servizi.");
         int delay = 5000; // Intervallo di aggiornamento in millisecondi (5 secondi)
         Timer timer = new Timer(delay, e -> {
-            printDebug("Timer attivato: aggiornamento dello stato dei servizi.");
+            //printDebug("Timer attivato: aggiornamento dello stato dei servizi.");
             updateServiceStatus();
         });
         timer.start();
-        printDebug("Timer avviato con intervallo di aggiornamento: " + delay + " millisecondi.");
+        //printDebug("Timer avviato con intervallo di aggiornamento: " + delay + " millisecondi.");
     }
 
     // Aggiorna lo stato dei servizi e la GUI
     private void updateServiceStatus() {
         try {
-            printDebug("Inizio aggiornamento dello stato dei servizi.");
+            //printDebug("Inizio aggiornamento dello stato dei servizi.");
 
             // Controlla lo stato di Samba
-            printDebug("Controllo stato del servizio Samba (smbd).");
+            //printDebug("Controllo stato del servizio Samba (smbd).");
             if (isServiceActive("smbd")) {
-                printDebug("Samba è attivo.");
+                //printDebug("Samba è attivo.");
                 sambaStatusLabel.setText("Samba: Attivo");
                 sambaStatusLabel.setBackground(Color.GREEN);
                 sambaButton.setText("Stop SAMBA");
             } else {
-                printDebug("Samba è inattivo.");
+                //printDebug("Samba è inattivo.");
                 sambaStatusLabel.setText("Samba: Inattivo");
                 sambaStatusLabel.setBackground(Color.RED);
                 sambaButton.setText("Start SAMBA");
             }
 
             // Controlla lo stato di FTP
-            printDebug("Controllo stato del servizio FTP (vsftpd).");
+            //printDebug("Controllo stato del servizio FTP (vsftpd).");
             if (isServiceActive("vsftpd")) {
-                printDebug("vsftpd è attivo.");
+                //printDebug("vsftpd è attivo.");
                 ftpStatusLabel.setText("vsftpd: Attivo");
                 ftpStatusLabel.setBackground(Color.GREEN);
                 ftpButton.setText("Stop FTP");
             } else {
-                printDebug("vsftpd è inattivo.");
+                //printDebug("vsftpd è inattivo.");
                 ftpStatusLabel.setText("vsftpd: Inattivo");
                 ftpStatusLabel.setBackground(Color.RED);
                 ftpButton.setText("Start FTP");
             }
 
-            printDebug("Aggiornamento dello stato dei servizi completato.");
+            //printDebug("Aggiornamento dello stato dei servizi completato.");
         } catch (Exception ex) {
             printDebug("Errore durante l'aggiornamento dello stato dei servizi: " + ex.getMessage());
             System.err.println("Errore durante l'aggiornamento dello stato dei servizi: " + ex.getMessage());
@@ -388,8 +388,10 @@ public class MainManager {
         // Pannello inferiore per Config SAMBA e Config FTP
         printDebug("Creazione del pannello inferiore per le configurazioni.");
         configButtonPanel = new JPanel(new GridLayout(1, 2, 10, 10));
-        JButton configSambaButton = new JButton("Config SAMBA");
-        JButton configFtpButton = new JButton("Config FTP");
+        configSambaButton = new JButton("Config SAMBA");
+        configFtpButton = new JButton("Config FTP");
+        configSambaButton.addActionListener(e -> handleSambaConfigButton());
+        configFtpButton.addActionListener(e -> handleFtpConfigButton());
         configButtonPanel.setBorder(BorderFactory.createTitledBorder("Configurazioni Globali"));
         configButtonPanel.add(configSambaButton);
         configButtonPanel.add(configFtpButton);
@@ -663,7 +665,9 @@ public class MainManager {
         userList.setEnabled(!enable);
         addUserButton.setEnabled(!enable);
         deleteUserButton.setEnabled(!enable);
-        printDebug("Stato della Lista Utenti e pulsanti Aggiungi ed Elimina Utente aggiornato: " + (!enable ? "Abilitata" : "Disabilitata"));
+        configSambaButton.setEnabled(!enable);
+        configFtpButton.setEnabled(!enable);
+        printDebug("Stato della Lista Utenti e pulsanti Aggiungi ed Elimina Utente e pulsanti Config FTP e Config Samba aggiornato: " + (!enable ? "Abilitata" : "Disabilitata"));
 
         // Cambia il testo del bottone in base allo stato
         manageUserButton.setText(enable ? "Salva Modifiche" : "Gestisci Utente");
@@ -764,14 +768,14 @@ public class MainManager {
 
     // Verifica se un servizio è attivo
     private boolean isServiceActive(String serviceName) {
-        printDebug("Verifica se il servizio è attivo: " + serviceName);
+        //printDebug("Verifica se il servizio è attivo: " + serviceName);
         try {
             ProcessBuilder pb = new ProcessBuilder("systemctl", "is-active", "--quiet", serviceName);
-            printDebug("Esecuzione del comando: " + String.join(" ", pb.command()));
+            //printDebug("Esecuzione del comando: " + String.join(" ", pb.command()));
             Process process = pb.start();
             int exitCode = process.waitFor();
             boolean isActive = exitCode == 0;
-            printDebug("Servizio " + serviceName + (isActive ? " attivo." : " inattivo."));
+            //printDebug("Servizio " + serviceName + (isActive ? " attivo." : " inattivo."));
             return isActive;
         } catch (IOException | InterruptedException e) {
             printDebug("Errore durante il controllo del servizio " + serviceName + ": " + e.getMessage());
@@ -942,7 +946,65 @@ public class MainManager {
                 // Gestione Samba
                 if (sambaCheckBox.isSelected()) {
                     printDebug("Gestione Samba selezionata.");
-                    // Controlli e log simili a quanto fatto sopra...
+
+                    // Controllo per nome duplicato con percorso diverso
+                    printDebug("Controllo per nome duplicato con percorso diverso...");
+                    boolean nameConflict = sambaManager.getAllShares().stream()
+                            .anyMatch(share -> share.getName().equalsIgnoreCase(shareName) &&
+                                    share.getProperties().stream()
+                                            .noneMatch(property -> property[0].equalsIgnoreCase("path") &&
+                                                    property[1].equals(path)));
+
+                    if (nameConflict) {
+                        printDebug("Conflitto rilevato: Esiste già una condivisione Samba con lo stesso nome ma un percorso diverso.");
+                        showErrorDialog("Esiste già una condivisione Samba con lo stesso nome ma un percorso diverso. Modifica i dettagli.");
+                        return;
+                    }
+                    printDebug("Nessun conflitto di nome rilevato.");
+
+                    // Controllo per percorso già condiviso
+                    printDebug("Controllo per percorso già condiviso...");
+                    SmbCondBean existingShare = sambaManager.getAllShares().stream()
+                            .filter(share -> share.getProperties().stream()
+                                    .anyMatch(property -> property[0].equalsIgnoreCase("path") && property[1].equals(path)))
+                            .findFirst()
+                            .orElse(null);
+
+                    if (existingShare != null) {
+                        printDebug("Percorso già condiviso rilevato con il nome: " + existingShare.getName());
+                        // Aggiungi l'utente ai valid users
+                        existingShare.addValidUser(selectedUser);
+                        sambaManager.modifyShare(existingShare.getName(), existingShare);
+                        printDebug("Utente aggiunto ai valid users della condivisione esistente: " + existingShare.getName());
+
+                        // Mostra dialog informativo
+                        showInfoDialog("Il percorso è già condiviso con il nome '" + existingShare.getName() +
+                                "'. L'utente è stato aggiunto ai valid users.");
+                    } else {
+                        printDebug("Percorso non condiviso. Creazione di una nuova condivisione Samba...");
+
+                        // Crea una nuova condivisione
+                        SmbCondBean sambaShare = new SmbCondBean(shareName);
+                        sambaShare.addProperty("path", path);
+                        sambaShare.addProperty("comment", sambaCommentField.getText());
+                        sambaShare.addProperty("browsable", sambaBrowsableField.getText());
+                        sambaShare.addProperty("writable", sambaWritableField.getText());
+                        sambaShare.addProperty("guest ok", sambaGuestOkField.getText());
+                        sambaShare.addProperty("create mask", sambaCreateMaskField.getText());
+                        sambaShare.addProperty("directory mask", sambaDirectoryMaskField.getText());
+                        sambaShare.addValidUser(selectedUser);
+                        sambaManager.addShare(sambaShare);
+
+                        printDebug("Nuova condivisione Samba creata con il nome: " + shareName + " e percorso: " + path);
+                    }
+
+                    // Aggiorna la lista delle condivisioni Samba visivamente
+                    printDebug("Aggiornamento della lista delle condivisioni Samba per l'utente: " + selectedUser);
+                    sambaShareList.setListData(sambaManager.getSharesByUser(selectedUser)
+                            .stream()
+                            .map(SmbCondBean::getName)
+                            .toArray(String[]::new));
+                    printDebug("Lista delle condivisioni Samba aggiornata.");
                 }
 
                 addShareDialog.dispose();
@@ -1151,15 +1213,24 @@ public class MainManager {
                 showInfoDialog("Utente rimosso da Samba.");
             }
 
+            boolean changesYesOrNot = false;
+
             // Salvataggio configurazioni solo se il servizio era già abilitato
             if (ftpCheckbox.isSelected() && user.isFtpEnabled()) {
                 printDebug("Salvataggio configurazioni FTP su disco.");
                 ftpManager.saveSharesOnDisk();
+                changesYesOrNot = true;
             }
 
             if (sambaCheckbox.isSelected() && user.isSambaEnabled()) {
                 printDebug("Salvataggio configurazioni Samba.");
                 sambaManager.updateConfig();
+                changesYesOrNot = true;
+            }
+
+            if(changesYesOrNot) {
+                usersManager.setPermissionForUser(selectedUser);
+                printDebug("Aggiornati i permessi per l'utente: " + selectedUser + " sulle eventuali nuove condivisioni.");
             }
 
             // Riavvia i servizi Samba e FTP
@@ -1310,6 +1381,14 @@ public class MainManager {
 
         // Mostra il dialog
         addUserDialog.setVisible(true);
+    }
+
+    private void handleSambaConfigButton() {
+
+    }
+
+    private void handleFtpConfigButton() {
+
     }
 
     public static void main(String[] args) {

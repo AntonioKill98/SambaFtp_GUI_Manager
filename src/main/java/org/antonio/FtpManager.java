@@ -402,15 +402,20 @@ public class FtpManager {
                                 printDebug("Trovata potenziale condivisione: " + share);
 
                                 if (Files.isDirectory(share) && isMountPointUsingProc(share)) { // Solo bind mount
-                                    printDebug("Condivisione valida trovata (bind mount): " + share);
-                                    FtpCondBean ftpShare = new FtpCondBean(
-                                            userDir.getFileName().toString(),
-                                            share.getFileName().toString(),
-                                            share.toString()
-                                    );
-                                    ftpShares.add(ftpShare);
-                                    ftpSharesCopy.add(ftpShare);
-                                    printDebug("Condivisione aggiunta a `ftpShares` e `ftpSharesCopy`: " + ftpShare.toFormattedString());
+                                    String sourcePath = getBindMountSourcePath(share);
+                                    if (sourcePath != null) {
+                                        printDebug("Condivisione valida trovata (bind mount): " + share);
+                                        FtpCondBean ftpShare = new FtpCondBean(
+                                                userDir.getFileName().toString(),
+                                                share.getFileName().toString(),
+                                                sourcePath
+                                        );
+                                        ftpShares.add(ftpShare);
+                                        ftpSharesCopy.add(ftpShare);
+                                        printDebug("Condivisione aggiunta a `ftpShares` e `ftpSharesCopy`: " + ftpShare.toFormattedString());
+                                    } else {
+                                        printDebug("Condivisione ignorata (impossibile determinare il percorso sorgente): " + share);
+                                    }
                                 } else {
                                     printDebug("Condivisione ignorata (non è un bind mount): " + share);
                                 }
@@ -427,6 +432,61 @@ public class FtpManager {
 
         printDebug("Caricamento delle condivisioni FTP completato.");
         printDebug("Numero totale di condivisioni caricate: " + ftpShares.size());
+    }
+
+    private String getBindMountSourcePath(Path bindMountPath) throws IOException {
+        printDebug("Determinazione del percorso sorgente per il bind mount: " + bindMountPath);
+        Path fstabPath = Paths.get("/etc/fstab");
+        Path mountInfoPath = Paths.get("/proc/self/mountinfo");
+
+        Map<String, String> fstabMap = new HashMap<>();
+
+        // Fase 1: Leggi e analizza `/etc/fstab`
+        printDebug("Caricamento dei mount point da /etc/fstab...");
+        try (BufferedReader reader = Files.newBufferedReader(fstabPath)) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (line.trim().startsWith("#") || line.trim().isEmpty()) {
+                    continue; // Ignora commenti e righe vuote
+                }
+                String[] parts = line.split("\\s+");
+                if (parts.length >= 2) {
+                    String fstabSource = parts[0]; // Percorso sorgente
+                    String fstabTarget = parts[1]; // Punto di mount
+                    fstabMap.put(fstabTarget, fstabSource);
+                }
+            }
+        }
+        printDebug("Mappa dei mount point da /etc/fstab: " + fstabMap);
+
+        // Fase 2: Conferma il mount attivo e trova il percorso sorgente in `/proc/self/mountinfo`
+        String sourcePath = null;
+        printDebug("Conferma dei mount point in /proc/self/mountinfo...");
+        try (BufferedReader reader = Files.newBufferedReader(mountInfoPath)) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                String[] parts = line.split(" ");
+                if (parts.length > 9) {
+                    String mountPoint = parts[4]; // Punto di mount attivo
+                    if (Paths.get(mountPoint).equals(bindMountPath)) {
+                        printDebug("Bind mount trovato in mountinfo: " + mountPoint);
+                        sourcePath = fstabMap.get(mountPoint);
+                        if (sourcePath != null) {
+                            printDebug("Percorso sorgente corrispondente trovato in fstab: " + sourcePath);
+                        } else {
+                            printDebug("Percorso sorgente non trovato in fstab per: " + mountPoint);
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Fallback: Nessun percorso sorgente determinato
+        if (sourcePath == null) {
+            printDebug("Percorso sorgente non determinato per il bind mount: " + bindMountPath);
+        }
+        return sourcePath;
     }
 
     private boolean isMountPointUsingProc(Path path) throws IOException {
