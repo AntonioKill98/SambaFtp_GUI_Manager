@@ -1,90 +1,96 @@
 # FTP_Samba GUI Manager
 
-**FTP_Samba GUI Manager** è un'applicazione Java con interfaccia grafica progettata per semplificare la gestione dei server FTP e Samba su sistemi basati su Debian. Offre un'interfaccia intuitiva per configurare condivisioni, utenti e parametri di servizio, integrando le modifiche direttamente nei file di configurazione.
+**FTP_Samba GUI Manager** is a Java graphical application designed to simplify the management of FTP and Samba servers on Debian-based systems. It offers an intuitive interface to configure shares, users, and service parameters, directly integrating changes into the configuration files.
 
 ---
 
-## Funzionalità
+## Features
 
-- **Gestione utenti**:
-  - Aggiunta/rimozione di utenti FTP e Samba.
-  - Associazione di utenti a condivisioni specifiche.
-  - Configurazione automatica dei permessi di accesso.
+- **User Management**:
+  - Add/remove FTP and Samba users.
+  - Assign users to specific shares.
+  - Automatically configure access permissions.
 
-- **Gestione condivisioni**:
-  - Creazione, modifica e rimozione di condivisioni FTP e Samba.
-  - Configurazione di valid users, percorsi e parametri avanzati.
+- **Share Management**:
+  - Create, edit, and remove FTP and Samba shares.
+  - Configure valid users, paths, and advanced parameters.
 
-- **Modifica della configurazione**:
-  - Editor integrato per i file di configurazione di Samba (`smb.conf`) e FTP (`vsftpd.conf`).
-  - Salvataggio delle modifiche con backup automatico.
-  - Riavvio automatico dei servizi dopo ogni aggiornamento.
+- **Configuration Editing**:
+  - Built-in editor for Samba (`smb.conf`) and FTP (`vsftpd.conf`) configuration files.
+  - Save changes with automatic backup.
+  - Automatically restart services after each update.
 
-- **Interfaccia grafica user-friendly**:
-  - Finestra con text editor per modificare i file di configurazione.
-  - Bottoni di azione per salvare o annullare le modifiche.
-  - Notifiche dettagliate per operazioni di successo o errori.
-
----
-
-## Requisiti di sistema
-
-- **Sistema operativo**: Debian-based (testato su Debian 12).
-- **Java**: JDK 17 o superiore.
-- **Permessi di amministratore**: L'app richiede privilegi `sudo` per modificare file di sistema e riavviare i servizi.
+- **User-friendly GUI**:
+  - A window with a text editor to modify configuration files.
+  - Action buttons to save or discard changes.
+  - Detailed notifications for successful operations or errors.
 
 ---
 
-## Installazione e configurazione
+## System Requirements
 
-1. **Clona il repository**:
+- **Operating System**: Debian-based (tested on Debian 12).
+- **Java**: JDK 17 or higher.
+- **Administrator Privileges**: The app must be run as root to modify system files and restart services.
+
+---
+
+## Download Jar File from Releases
+
+A precompiled Jar file is included in each release. You can download and use it directly or clone the repository and compile it yourself.
+
+---
+
+## Installation and Configuration
+
+1. **Clone the repository**:
    ```bash
-   git clone https://github.com/tuo-username/ftp_samba_gui_manager.git
+   git clone https://github.com/your-username/ftp_samba_gui_manager.git
    cd ftp_samba_gui_manager
    ```
 
-2. **Compila il progetto**:
+2. **Compile the project**:
    ```bash
    javac -d out -sourcepath src src/org/antonio/Main.java
    ```
 
-3. **Esegui l'applicazione**:
+3. **Run the application**:
    ```bash
    java -cp out org.antonio.Main
    ```
 
-4. **Configura i percorsi**:
-   - Verifica e aggiorna i percorsi nel codice, se necessario:
-     - Percorso del file Samba: `/etc/samba/smb.conf`.
-     - Percorso del file FTP: `/etc/vsftpd.conf`.
-     - File utenti FTP: `/etc/vsftpd.userlist`.
+4. **Configure paths**:
+   - Verify and update the paths in the code if necessary:
+     - Samba configuration file: `/etc/samba/smb.conf`.
+     - FTP configuration file: `/etc/vsftpd.conf`.
+     - FTP user file: `/etc/vsftpd.userlist`.
 
 ---
 
-## Utilizzo
+## Usage
 
-### Aggiunta di un utente
+### Adding a User
 
-1. Nella GUI, seleziona "Aggiungi Utente".
-2. Inserisci nome utente, password e abilita FTP/Samba.
-3. Configura le condivisioni e salva.
+1. In the GUI, select "Add User."
+2. Enter the username, password, and enable FTP/Samba.
 
-### Modifica delle condivisioni
+### Deleting a User
 
-1. Clicca su "Configura Samba" o "Configura FTP".
-2. Modifica i file direttamente nella text box.
-3. Salva per aggiornare la configurazione e riavviare i servizi.
+1. In the GUI, select a user.
+2. Click "Delete User" and confirm.
+
+### Editing Shares and Permissions
+
+1. Select a user; the panel with their details will populate.
+2. Click "Manage User."
+3. Add or remove shares for Samba and/or FTP.
+4. Enable or disable Samba and/or FTP access for the user.
+5. Save the changes to update the configuration and restart the services.
 
 ---
 
-## Contributi
+## Contributions
 
-Contributi e suggerimenti sono benvenuti! Sentiti libero di aprire issue o pull request.
-
----
-
-## Licenza
-
-Questo progetto è distribuito sotto la licenza MIT. Consulta il file [LICENSE](LICENSE) per maggiori dettagli.
+Contributions and suggestions are welcome! Feel free to open issues or pull requests.
 
 ---
