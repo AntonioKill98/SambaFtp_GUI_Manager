@@ -138,7 +138,7 @@ public class SambaManager {
 
     public void addSambaUser(String username, String password) throws IOException {
         printDebug("Aggiunta utente Samba: " + username);
-        ProcessBuilder pb = new ProcessBuilder("sudo", "smbpasswd", "-a", username);
+        ProcessBuilder pb = new ProcessBuilder("smbpasswd", "-a", username);
 
         try {
             Process process = pb.start();
@@ -174,7 +174,7 @@ public class SambaManager {
 
         updateConfig();
 
-        ProcessBuilder pb = new ProcessBuilder("sudo", "smbpasswd", "-x", username);
+        ProcessBuilder pb = new ProcessBuilder("smbpasswd", "-x", username);
         executeCommand(pb, "Errore durante la rimozione dell'utente Samba: " + username);
 
         loadSambaUsers();
@@ -385,7 +385,7 @@ public class SambaManager {
 
     public void startSambaService() throws IOException {
         printDebug("Tentativo di avvio del servizio Samba...");
-        ProcessBuilder pb = new ProcessBuilder("sudo", "systemctl", "start", "smbd");
+        ProcessBuilder pb = new ProcessBuilder("systemctl", "start", "smbd");
         printDebug("Comando costruito: " + String.join(" ", pb.command()));
 
         try {
@@ -399,7 +399,7 @@ public class SambaManager {
 
     public void stopSambaService() throws IOException {
         printDebug("Tentativo di arresto del servizio Samba...");
-        ProcessBuilder pb = new ProcessBuilder("sudo", "systemctl", "stop", "smbd");
+        ProcessBuilder pb = new ProcessBuilder("systemctl", "stop", "smbd");
         printDebug("Comando costruito: " + String.join(" ", pb.command()));
 
         try {

@@ -323,7 +323,7 @@ public class FtpManager {
         }
 
         // Esegui il bind mount
-        ProcessBuilder mountPb = new ProcessBuilder("sudo", "mount", "--bind", sourcePath, targetPath);
+        ProcessBuilder mountPb = new ProcessBuilder("mount", "--bind", sourcePath, targetPath);
         printDebug("Esecuzione del comando mount: " + String.join(" ", mountPb.command()));
         executeCommand(mountPb, "Errore nel creare il bind mount per " + targetPath);
         printDebug("Bind mount creato con successo da " + sourcePath + " a " + targetPath);
@@ -352,7 +352,7 @@ public class FtpManager {
         // Smonta il bind mount se esiste
         if (Files.exists(targetDir)) {
             printDebug("Il percorso di destinazione esiste. Tentativo di smontaggio: " + targetPath);
-            ProcessBuilder umountPb = new ProcessBuilder("sudo", "umount", targetPath);
+            ProcessBuilder umountPb = new ProcessBuilder("umount", targetPath);
             try {
                 printDebug("Esecuzione del comando umount: " + String.join(" ", umountPb.command()));
                 executeCommand(umountPb, "Errore nello smontare il bind mount per " + targetPath);
@@ -506,7 +506,7 @@ public class FtpManager {
 
     public void startFtpService() throws IOException {
         printDebug("Tentativo di avvio del servizio FTP.");
-        ProcessBuilder pb = new ProcessBuilder("sudo", "systemctl", "start", "vsftpd");
+        ProcessBuilder pb = new ProcessBuilder("systemctl", "start", "vsftpd");
         printDebug("Comando costruito: " + String.join(" ", pb.command()));
         executeCommand(pb, "Errore durante l'avvio del servizio FTP");
         printDebug("Servizio FTP avviato con successo.");
@@ -514,7 +514,7 @@ public class FtpManager {
 
     public void stopFtpService() throws IOException {
         printDebug("Tentativo di arresto del servizio FTP.");
-        ProcessBuilder pb = new ProcessBuilder("sudo", "systemctl", "stop", "vsftpd");
+        ProcessBuilder pb = new ProcessBuilder("systemctl", "stop", "vsftpd");
         printDebug("Comando costruito: " + String.join(" ", pb.command()));
         executeCommand(pb, "Errore durante l'arresto del servizio FTP");
         printDebug("Servizio FTP arrestato con successo.");

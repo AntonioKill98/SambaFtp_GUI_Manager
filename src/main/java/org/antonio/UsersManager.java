@@ -108,7 +108,7 @@ public class UsersManager {
         String sharedGroupName = "shareGroup";
 
         // Aggiunge l'utente al sistema
-        ProcessBuilder pb = new ProcessBuilder("sudo", "useradd", "-m", username);
+        ProcessBuilder pb = new ProcessBuilder("useradd", "-m", username);
         printDebug("Esecuzione del comando per aggiungere l'utente: " + String.join(" ", pb.command()));
         Process process = pb.start();
         try {
@@ -125,7 +125,7 @@ public class UsersManager {
 
         // Aggiunge l'utente al gruppo condiviso
         printDebug("Aggiunta dell'utente " + username + " al gruppo condiviso " + sharedGroupName);
-        ProcessBuilder groupAddPb = new ProcessBuilder("sudo", "usermod", "-aG", sharedGroupName, username);
+        ProcessBuilder groupAddPb = new ProcessBuilder("usermod", "-aG", sharedGroupName, username);
         printDebug("Esecuzione del comando per aggiungere l'utente al gruppo: " + String.join(" ", groupAddPb.command()));
         Process groupAddProcess = groupAddPb.start();
         try {
@@ -165,7 +165,7 @@ public class UsersManager {
     // Imposta la password di un utente
     private void setPassword(String username, String password) throws IOException {
         printDebug("Inizio impostazione della password per l'utente: " + username);
-        ProcessBuilder pb = new ProcessBuilder("sudo", "chpasswd");
+        ProcessBuilder pb = new ProcessBuilder("chpasswd");
         printDebug("Esecuzione del comando per impostare la password: " + String.join(" ", pb.command()));
         Process process = pb.start();
         try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(process.getOutputStream()))) {
@@ -201,7 +201,7 @@ public class UsersManager {
         printDebug("Utente rimosso da FTP: " + username);
 
         // Elimina l'utente dal sistema
-        ProcessBuilder pb = new ProcessBuilder("sudo", "userdel", "-r", username);
+        ProcessBuilder pb = new ProcessBuilder("userdel", "-r", username);
         printDebug("Esecuzione del comando per rimuovere l'utente: " + String.join(" ", pb.command()));
         Process process = pb.start();
         try {

@@ -367,7 +367,7 @@ public class SambaFtpManager {
         }
 
         // Riavvia Samba per applicare la configurazione aggiornata
-        Runtime.getRuntime().exec("sudo systemctl restart smbd").waitFor();
+        Runtime.getRuntime().exec("systemctl restart smbd").waitFor();
     }
 
 
@@ -382,7 +382,7 @@ public class SambaFtpManager {
             writer.newLine();
         }
 
-        Runtime.getRuntime().exec("sudo systemctl restart smbd").waitFor();
+        Runtime.getRuntime().exec("systemctl restart smbd").waitFor();
     }
 
 
@@ -403,7 +403,7 @@ public class SambaFtpManager {
             }
 
             // Esegui il bind mount
-            String command = String.format("sudo mount --bind %s %s", directoryPath, bindMountPath);
+            String command = String.format("mount --bind %s %s", directoryPath, bindMountPath);
             Process process = Runtime.getRuntime().exec(command);
             int exitCode = process.waitFor();
             if (exitCode != 0) {
@@ -448,7 +448,7 @@ public class SambaFtpManager {
 
         try {
             // Smonta il bind mount
-            String command = String.format("sudo umount %s", bindMountPath);
+            String command = String.format("umount %s", bindMountPath);
             Process process = Runtime.getRuntime().exec(command);
             int exitCode = process.waitFor();
             if (exitCode != 0) {
@@ -533,7 +533,7 @@ public class SambaFtpManager {
         }
 
         // Riavvia Samba
-        Process process = Runtime.getRuntime().exec("sudo systemctl restart smbd");
+        Process process = Runtime.getRuntime().exec("systemctl restart smbd");
         int exitCode = process.waitFor();
         if (exitCode != 0) {
             throw new IOException("Errore durante il riavvio di Samba.");
@@ -585,12 +585,12 @@ public class SambaFtpManager {
     private static void addUserToUnix(String username, String password) {
         try {
             // Aggiunge l'utente al sistema
-            ProcessBuilder addUserBuilder = new ProcessBuilder("sudo", "useradd", "-m", username);
+            ProcessBuilder addUserBuilder = new ProcessBuilder("useradd", "-m", username);
             int addUserExitCode = addUserBuilder.start().waitFor();
 
             if (addUserExitCode == 0) {
                 // Imposta la password dell'utente
-                ProcessBuilder passwdBuilder = new ProcessBuilder("sudo", "passwd", username);
+                ProcessBuilder passwdBuilder = new ProcessBuilder("passwd", username);
                 Process passwdProcess = passwdBuilder.start();
 
                 // Scrive la password al processo passwd
@@ -618,7 +618,7 @@ public class SambaFtpManager {
     // Funzione per eliminare un utente da Unix
     private static void deleteUser(String username) {
         try {
-            ProcessBuilder processBuilder = new ProcessBuilder("sudo", "userdel", "-r", username);
+            ProcessBuilder processBuilder = new ProcessBuilder("userdel", "-r", username);
             processBuilder.start().waitFor();
         } catch (Exception e) {
             JOptionPane.showMessageDialog(null, "Errore durante l'eliminazione dell'utente: " + e.getMessage(),
@@ -720,7 +720,7 @@ public class SambaFtpManager {
             }
 
             // Comando per aggiungere l'utente a SAMBA
-            ProcessBuilder processBuilder = new ProcessBuilder("sudo", "smbpasswd", "-a", username);
+            ProcessBuilder processBuilder = new ProcessBuilder("smbpasswd", "-a", username);
             Process process = processBuilder.start();
 
             // Fornisci la password direttamente al processo
