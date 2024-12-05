@@ -62,8 +62,21 @@ public class MainManager {
         System.out.println(message);
     }
 
+    private boolean checkRoot() {
+        String user = System.getProperty("user.name");
+        return "root".equals(user);
+    }
+
     public MainManager() {
         try {
+
+            // Controlla se il programma è eseguito da root
+            if (!checkRoot()) {
+                showErrorDialog("Errore: il programma deve essere eseguito come root.");
+                printDebug("Il programma deve essere eseguito come root");
+                System.exit(1);
+            }
+
             printDebug("Inizio inizializzazione di MainManager.");
 
             // Controlla se Samba e vsftpd sono installati
